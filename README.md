@@ -4,6 +4,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B?logo=streamlit&logoColor=white)
 ![PennyLane](https://img.shields.io/badge/PennyLane-QML-7B3FE4)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 Modelo **ensemble** que predice los partidos del Mundial 2026 y se **actualiza**
 con nuevos datasets, resultados y noticias a medida que avanza el torneo. Incluye
@@ -28,6 +29,8 @@ ajuste en vivo del "momentum mediático" de cada selección.
 > **[README_QUANTUM.md](README_QUANTUM.md)**.
 
 ## 📊 Resultados (out-of-sample, holdout 12 meses · 601 partidos competitivos)
+
+![Módulo cuántico: frontera de decisión y comparación con el ensemble](docs/quantum.png)
 
 | Modelo | Accuracy | Log-loss | RPS |
 |--------|:--------:|:--------:|:---:|
@@ -140,3 +143,7 @@ Python 3.13. Los tests usan datos sintéticos, así que corren sin red ni descar
 ## 🛠️ Stack
 
 Python · pandas · NumPy · scikit-learn · XGBoost · PennyLane · Streamlit · Plotly · pytest · ruff
+
+## 📄 Licencia
+
+[MIT](LICENSE) — uso libre con atribución.
