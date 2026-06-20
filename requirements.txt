@@ -23,3 +23,6 @@ plotly>=5.22
 
 # Persistencia de modelos
 joblib>=1.4
+
+# Quantum Machine Learning (clasificador cuántico variacional)
+pennylane>=0.40

@@ -36,9 +36,9 @@ def _make_circuit(n_qubits=N_QUBITS):
 
     @qml.qnode(dev, interface="autograd")
     def circuit(weights, x):
-        for l in range(weights.shape[0]):
+        for layer in range(weights.shape[0]):
             qml.AngleEmbedding(x, wires=range(n_qubits), rotation="Y")
-            qml.StronglyEntanglingLayers(weights[l:l + 1], wires=range(n_qubits))
+            qml.StronglyEntanglingLayers(weights[layer:layer + 1], wires=range(n_qubits))
         return [qml.expval(qml.PauliZ(i)) for i in range(3)]  # 3 logits
 
     return circuit
