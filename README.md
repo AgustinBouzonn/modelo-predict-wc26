@@ -42,6 +42,8 @@ Métricas calculadas **sin fuga de datos** (modelo entrenado as-of una fecha de
 corte, evaluado sobre lo posterior). RPS = *Ranked Probability Score*, la métrica
 estándar para 1X2 (menor = mejor). Ambos modelos superan claramente al baseline.
 
+![Rendimiento del ensemble vs baselines](docs/performance.png)
+
 ## 🖥️ Dashboard
 
 `streamlit run app/dashboard.py` abre un panel con:
@@ -52,6 +54,8 @@ estándar para 1X2 (menor = mejor). Ambos modelos superan claramente al baseline
 Incluye predicción por partido con alineaciones en cancha (SVG), proyección del
 cuadro eliminatorio, simulación Monte Carlo del torneo y un benchmark medible del
 modelo contra el mercado de apuestas.
+
+![Ranking Elo de las selecciones](docs/ranking.png)
 
 ## 🏗️ Arquitectura
 
