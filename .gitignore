@@ -1,0 +1,15 @@
+.venv/
+config/odds_api_key.txt
+__pycache__/
+*.pyc
+data/raw/
+data/processed/
+data/news/
+models/*.joblib
+.streamlit/
+.DS_Store
+
+# Temporales
+*.log
+results_widget_fragment.html
+.claude/

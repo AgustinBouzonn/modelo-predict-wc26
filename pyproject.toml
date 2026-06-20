@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/F = pyflakes+pycodestyle; B = bugbear (caza bugs reales como F401/F841)
+select = ["E", "F", "B"]
+ignore = [
+    "E501",   # largo de línea (lo maneja line-length)
+    "E701", "E702",  # estilo compacto a; b en una línea (intencional)
+    "B023",   # closures en loop usadas de inmediato (falsos positivos acá)
+    "B905",   # zip sin strict= (no aplica a estas versiones de datos)
+    "B007",   # variable de loop sin usar (menor)
+]

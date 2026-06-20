@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Predictor Cuántico de Partidos — WC26</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.17.0/dist/tabler-icons.min.css">
+<style>
+:root{--font-sans:system-ui,sans-serif;--color-text-primary:#1a1a1a;--color-text-secondary:#555;--color-text-tertiary:#999;--color-text-info:#185fa5;--color-background-primary:#fff;--color-background-secondary:#f1efe8;--color-border-tertiary:rgba(0,0,0,.15);--border-radius-md:8px;}
+body{max-width:680px;margin:2rem auto;padding:0 1rem;font-family:var(--font-sans);color:var(--color-text-primary);}
+h1{font-weight:500;font-size:22px;} .sr-only{position:absolute;left:-9999px;}
+select,button{font:inherit;padding:8px 12px;border:0.5px solid rgba(0,0,0,.25);border-radius:8px;background:#fff;cursor:pointer;}
+button:hover{background:#f1efe8;}
+</style></head><body>
+<h1>🔮⚽ Predictor Cuántico de Partidos</h1>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flag-icons@7.2.3/css/flag-icons.min.css">
+<h2 class="sr-only">Predictor cuántico de partidos: elegí dos selecciones y el modelo cuántico predice el ganador.</h2>
+<div style="padding:1rem 0; font-family:var(--font-sans);">
+
+  <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:end; margin-bottom:1.25rem;">
+    <div>
+      <label style="font-size:13px; color:var(--color-text-secondary);">Local</label>
+      <select id="home" style="width:100%; margin-top:4px;"></select>
+    </div>
+    <div style="padding-bottom:8px; font-size:14px; color:var(--color-text-tertiary);">vs</div>
+    <div>
+      <label style="font-size:13px; color:var(--color-text-secondary);">Visitante</label>
+      <select id="away" style="width:100%; margin-top:4px;"></select>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:center; margin-bottom:1rem;">
+    <button id="guessH" class="guess" data-side="H" style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px;">
+      <span id="flagH" class="fi" style="width:72px; height:54px; border-radius:4px; background-size:cover;"></span>
+      <span id="nameH" style="font-size:14px; font-weight:500;"></span>
+      <span id="eloH" style="font-size:12px; color:var(--color-text-tertiary);"></span>
+    </button>
+    <div style="font-size:18px; color:var(--color-text-tertiary);">VS</div>
+    <button id="guessA" class="guess" data-side="A" style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px;">
+      <span id="flagA" class="fi" style="width:72px; height:54px; border-radius:4px; background-size:cover;"></span>
+      <span id="nameA" style="font-size:14px; font-weight:500;"></span>
+      <span id="eloA" style="font-size:12px; color:var(--color-text-tertiary);"></span>
+    </button>
+  </div>
+
+  <p style="text-align:center; font-size:13px; color:var(--color-text-secondary); margin:0 0 12px;">
+    Tocá la bandera de quien creés que gana, luego medí el qubit.
+  </p>
+
+  <div style="display:flex; gap:8px; justify-content:center; margin-bottom:1.25rem;">
+    <button id="measure" style="font-weight:500;"><i class="ti ti-atom-2" aria-hidden="true"></i> Medir el qubit</button>
+    <button id="random"><i class="ti ti-dice-5" aria-hidden="true"></i> Partido al azar</button>
+  </div>
+
+  <div id="result" style="visibility:hidden;">
+    <div style="display:flex; justify-content:space-between; font-size:13px; color:var(--color-text-secondary); margin-bottom:4px;">
+      <span id="lblH"></span><span id="lblA"></span>
+    </div>
+    <div style="position:relative; height:26px; border-radius:var(--border-radius-md); overflow:hidden; background:var(--color-background-secondary);">
+      <div id="bar" style="height:100%; width:50%; background:var(--color-text-info); transition:width .6s ease;"></div>
+      <div id="barpct" style="position:absolute; top:0; left:0; right:0; height:100%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:500;"></div>
+    </div>
+    <p id="verdict" style="text-align:center; font-size:15px; margin:12px 0 0;"></p>
+  </div>
+
+  <div style="margin-top:1.5rem;">
+    <p style="font-size:13px; color:var(--color-text-secondary); margin:0 0 6px;">Frontera de decisión del clasificador cuántico (eje X: ventaja de Elo · eje Y: ventaja de forma). El punto es el partido actual.</p>
+    <canvas id="map" width="640" height="260" style="width:100%; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-tertiary);" role="img" aria-label="Mapa de la frontera de decisión cuántica con el partido actual marcado"></canvas>
+  </div>
+
+  <div id="score" style="text-align:center; font-size:13px; color:var(--color-text-secondary); margin-top:1rem;"></div>
+
+  <p style="text-align:center; font-size:12px; color:var(--color-text-tertiary); margin-top:1rem;">
+    Clasificador cuántico variacional (PennyLane) entrenado sobre 17,859 partidos · precisión en test 72.9%
+  </p>
+</div>
+
+<script>
+const DATA = {"teams": [{"n": "Alemania", "iso": "de", "elo": 2166.8, "form": 3.0}, {"n": "Arabia Saudita", "iso": "sa", "elo": 1800.9, "form": 1.0}, {"n": "Argelia", "iso": "dz", "elo": 1945.7, "form": 2.0}, {"n": "Argentina", "iso": "ar", "elo": 2316.6, "form": 3.0}, {"n": "Australia", "iso": "au", "elo": 2173.9, "form": 2.0}, {"n": "Austria", "iso": "at", "elo": 2095.3, "form": 2.6}, {"n": "Bosnia", "iso": "ba", "elo": 1877.5, "form": 1.0}, {"n": "Brasil", "iso": "br", "elo": 2154.7, "form": 2.0}, {"n": "Bélgica", "iso": "be", "elo": 2098.7, "form": 2.2}, {"n": "Cabo Verde", "iso": "cv", "elo": 1747.4, "form": 1.0}, {"n": "Canadá", "iso": "ca", "elo": 1926.3, "form": 1.4}, {"n": "Catar", "iso": "qa", "elo": 1616.6, "form": 0.6}, {"n": "Chequia", "iso": "cz", "elo": 1895.2, "form": 1.6}, {"n": "Colombia", "iso": "co", "elo": 2165.1, "form": 1.8}, {"n": "Corea del Sur", "iso": "kr", "elo": 2012.6, "form": 1.8}, {"n": "Costa de Marfil", "iso": "ci", "elo": 2059.4, "form": 2.4}, {"n": "Croacia", "iso": "hr", "elo": 2099.7, "form": 1.8}, {"n": "Curazao", "iso": "cw", "elo": 1607.3, "form": 0.6}, {"n": "Ecuador", "iso": "ec", "elo": 2056.5, "form": 1.6}, {"n": "Egipto", "iso": "eg", "elo": 1955.6, "form": 1.6}, {"n": "Escocia", "iso": "gb-sct", "elo": 2082.2, "form": 1.8}, {"n": "España", "iso": "es", "elo": 2325.7, "form": 1.8}, {"n": "Estados Unidos", "iso": "us", "elo": 2082.0, "form": 1.2}, {"n": "Francia", "iso": "fr", "elo": 2335.9, "form": 2.4}, {"n": "Ghana", "iso": "gh", "elo": 1680.4, "form": 0.2}, {"n": "Haití", "iso": "ht", "elo": 1729.3, "form": 0.8}, {"n": "Inglaterra", "iso": "gb-eng", "elo": 2314.3, "form": 2.0}, {"n": "Irak", "iso": "iq", "elo": 1781.9, "form": 1.4}, {"n": "Irán", "iso": "ir", "elo": 1911.0, "form": 2.0}, {"n": "Japón", "iso": "jp", "elo": 2112.6, "form": 2.6}, {"n": "Jordania", "iso": "jo", "elo": 1769.5, "form": 0.4}, {"n": "Marruecos", "iso": "ma", "elo": 2156.2, "form": 2.2}, {"n": "México", "iso": "mx", "elo": 2124.1, "form": 2.6}, {"n": "Noruega", "iso": "no", "elo": 2281.4, "form": 1.6}, {"n": "Nueva Zelanda", "iso": "nz", "elo": 1705.2, "form": 0.8}, {"n": "Panamá", "iso": "pa", "elo": 1910.9, "form": 1.6}, {"n": "Paraguay", "iso": "py", "elo": 1904.7, "form": 1.8}, {"n": "Países Bajos", "iso": "nl", "elo": 2154.9, "form": 1.6}, {"n": "Portugal", "iso": "pt", "elo": 2183.4, "form": 2.6}, {"n": "RD Congo", "iso": "cd", "elo": 1867.8, "form": 1.4}, {"n": "Senegal", "iso": "sn", "elo": 1919.1, "form": 1.4}, {"n": "Sudáfrica", "iso": "za", "elo": 1669.9, "form": 1.0}, {"n": "Suecia", "iso": "se", "elo": 2046.4, "form": 2.0}, {"n": "Suiza", "iso": "ch", "elo": 2074.1, "form": 1.2}, {"n": "Turquía", "iso": "tr", "elo": 2054.2, "form": 2.4}, {"n": "Túnez", "iso": "tn", "elo": 1650.9, "form": 0.8}, {"n": "Uruguay", "iso": "uy", "elo": 1992.2, "form": 0.8}, {"n": "Uzbekistán", "iso": "uz", "elo": 1902.3, "form": 1.0}], "gx": [-1499.4, -1350.08, -1200.76, -1051.43, -902.11, -752.79, -603.46, -454.14, -304.82, -155.49, -6.17, 143.15, 292.48, 441.8, 591.13, 740.45, 889.77, 1039.1, 1188.42, 1337.74], "gy": [-3.0, -2.695, -2.39, -2.085, -1.78, -1.475, -1.169, -0.864, -0.559, -0.254, 0.051, 0.356, 0.661, 0.966, 1.271, 1.576, 1.881, 2.186, 2.492, 2.797], "z": [[-0.5654, -0.5691, -0.5624, -0.5454, -0.5186, -0.4826, -0.4384, -0.387, -0.3299, -0.2684, -0.2041, -0.1387, -0.0738, -0.0111, 0.0478, 0.1015, 0.1486, 0.1878, 0.2182, 0.2389], [-0.6168, -0.6216, -0.6141, -0.5944, -0.5632, -0.5211, -0.4692, -0.4089, -0.3417, -0.2693, -0.1936, -0.1164, -0.0398, 0.0344, 0.1041, 0.1677, 0.2235, 0.2701, 0.3063, 0.3313], [-0.663, -0.6677, -0.6583, -0.6351, -0.5987, -0.5499, -0.4901, -0.4208, -0.3437, -0.2608, -0.1742, -0.0861, 0.0013, 0.0857, 0.1649, 0.237, 0.3002, 0.3527, 0.3933, 0.421], [-0.703, -0.7063, -0.6939, -0.6663, -0.6241, -0.5684, -0.5006, -0.4224, -0.3358, -0.243, -0.1464, -0.0485, 0.0483, 0.1415, 0.2287, 0.3078, 0.3766, 0.4334, 0.4769, 0.5058], [-0.7357, -0.7364, -0.7201, -0.6874, -0.6389, -0.576, -0.5002, -0.4135, -0.3181, -0.2164, -0.111, -0.0046, 0.1001, 0.2005, 0.294, 0.3781, 0.4508, 0.5103, 0.5549, 0.5836], [-0.7602, -0.7572, -0.7362, -0.6977, -0.6427, -0.5726, -0.4892, -0.3946, -0.2912, -0.1817, -0.0689, 0.0445, 0.1554, 0.2611, 0.3589, 0.4463, 0.521, 0.5812, 0.6253, 0.6523], [-0.776, -0.7683, -0.7417, -0.697, -0.6353, -0.5582, -0.4677, -0.366, -0.2558, -0.1398, -0.0211, 0.0974, 0.2127, 0.3218, 0.4219, 0.5105, 0.5853, 0.6445, 0.6865, 0.7102], [-0.7827, -0.7692, -0.7365, -0.6853, -0.617, -0.5332, -0.4363, -0.3285, -0.2127, -0.0918, 0.0312, 0.153, 0.2706, 0.381, 0.4814, 0.5692, 0.6422, 0.6985, 0.7367, 0.7558], [-0.7801, -0.7601, -0.7207, -0.6629, -0.5881, -0.4983, -0.3957, -0.283, -0.163, -0.0388, 0.0865, 0.2097, 0.3276, 0.4372, 0.5358, 0.6208, 0.69, 0.7418, 0.7747, 0.788], [-0.7682, -0.7411, -0.6948, -0.6304, -0.5496, -0.4543, -0.3471, -0.2307, -0.108, 0.0178, 0.1436, 0.2661, 0.3823, 0.489, 0.5838, 0.664, 0.7278, 0.7734, 0.7997, 0.806], [-0.7474, -0.7128, -0.6594, -0.5886, -0.5022, -0.4024, -0.2917, -0.1729, -0.0491, 0.0766, 0.2009, 0.3208, 0.4332, 0.5351, 0.6241, 0.6978, 0.7544, 0.7924, 0.8108, 0.8092], [-0.7181, -0.6758, -0.6154, -0.5386, -0.4473, -0.3439, -0.2308, -0.1111, 0.0122, 0.136, 0.2571, 0.3724, 0.4791, 0.5743, 0.6558, 0.7213, 0.7692, 0.7983, 0.8079, 0.7977], [-0.6812, -0.6311, -0.564, -0.4817, -0.3863, -0.2802, -0.1661, -0.0469, 0.0743, 0.1945, 0.3106, 0.4196, 0.5188, 0.6056, 0.6779, 0.7338, 0.7718, 0.791, 0.791, 0.7716], [-0.6376, -0.5798, -0.5064, -0.4192, -0.3206, -0.213, -0.0991, 0.0181, 0.1357, 0.2507, 0.3601, 0.4611, 0.5513, 0.6282, 0.69, 0.7351, 0.7622, 0.7708, 0.7605, 0.7318], [-0.5883, -0.5232, -0.444, -0.3529, -0.252, -0.144, -0.0316, 0.0823, 0.1948, 0.3031, 0.4043, 0.496, 0.5758, 0.6416, 0.6918, 0.7251, 0.7406, 0.738, 0.7173, 0.6791], [-0.5347, -0.4628, -0.3786, -0.2843, -0.1822, -0.075, 0.0347, 0.144, 0.2501, 0.3503, 0.4422, 0.5233, 0.5916, 0.6453, 0.6831, 0.704, 0.7075, 0.6935, 0.6624, 0.6149], [-0.4781, -0.4001, -0.3117, -0.2152, -0.113, -0.0077, 0.0981, 0.2016, 0.3001, 0.3913, 0.4727, 0.5423, 0.5983, 0.6393, 0.6643, 0.6725, 0.6639, 0.6386, 0.5972, 0.5408], [-0.4199, -0.3367, -0.2451, -0.1474, -0.0461, 0.0562, 0.157, 0.2537, 0.3437, 0.4249, 0.4951, 0.5526, 0.5958, 0.6238, 0.6357, 0.6313, 0.6107, 0.5744, 0.5234, 0.4589], [-0.3616, -0.2743, -0.1805, -0.0827, 0.0167, 0.1151, 0.2099, 0.2989, 0.3797, 0.4503, 0.5088, 0.5538, 0.5842, 0.5991, 0.5982, 0.5815, 0.5494, 0.5028, 0.4428, 0.371], [-0.3048, -0.2143, -0.1194, -0.0226, 0.0739, 0.1673, 0.2555, 0.3361, 0.4072, 0.4668, 0.5135, 0.546, 0.5636, 0.5659, 0.5526, 0.5243, 0.4816, 0.4255, 0.3576, 0.2795]], "zmax": 0.8108, "acc": 0.729, "n": 17859};
+const teams = DATA.teams;
+const $ = id => document.getElementById(id);
+let guess = null, score = {rounds:0, hits:0};
+
+function fill(sel, def){
+  teams.forEach((t,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=t.n; sel.appendChild(o); });
+  sel.value = def;
+}
+function bilinear(ex, fy){
+  const gx=DATA.gx, gy=DATA.gy, z=DATA.z;
+  const cx=Math.max(gx[0], Math.min(gx[gx.length-1], ex));
+  const cy=Math.max(gy[0], Math.min(gy[gy.length-1], fy));
+  let i=0; while(i<gx.length-2 && gx[i+1]<cx) i++;
+  let j=0; while(j<gy.length-2 && gy[j+1]<cy) j++;
+  const tx=(cx-gx[i])/(gx[i+1]-gx[i]), ty=(cy-gy[j])/(gy[j+1]-gy[j]);
+  const a=z[j][i], b=z[j][i+1], c=z[j+1][i], d=z[j+1][i+1];
+  return a*(1-tx)*(1-ty)+b*tx*(1-ty)+c*(1-tx)*ty+d*tx*ty;
+}
+function setFlag(span, iso){ span.className='fi fi-'+iso; }
+
+function refresh(){
+  const h=teams[$('home').value], a=teams[$('away').value];
+  setFlag($('flagH'),h.iso); setFlag($('flagA'),a.iso);
+  $('nameH').textContent=h.n; $('nameA').textContent=a.n;
+  $('eloH').textContent='Elo '+Math.round(h.elo); $('eloA').textContent='Elo '+Math.round(a.elo);
+  $('lblH').textContent=h.n; $('lblA').textContent=a.n;
+  draw(h,a,null);
+}
+
+function predict(h,a){
+  const raw=bilinear(h.elo-a.elo, h.form-a.form);
+  let p=0.5+0.5*raw/DATA.zmax; p=Math.max(0.02,Math.min(0.98,p));
+  return p; // prob de que gane el local
+}
+
+function reveal(){
+  const h=teams[$('home').value], a=teams[$('away').value];
+  const p=predict(h,a), pct=Math.round(p*100);
+  $('result').style.visibility='visible';
+  $('bar').style.width=pct+'%';
+  $('barpct').textContent=pct+'% '+h.n+'  ·  '+(100-pct)+'% '+a.n;
+  const win = p>=0.5 ? h : a, conf=Math.round(Math.max(p,1-p)*100);
+  $('verdict').innerHTML='Predicción cuántica: gana <b>'+win.n+'</b> ('+conf+'% de confianza)';
+  if(guess){
+    score.rounds++;
+    const qSide = p>=0.5 ? 'H':'A';
+    if(guess===qSide) score.hits++;
+    $('score').innerHTML='<i class="ti ti-trophy" aria-hidden="true"></i> Coincidencias con el oráculo cuántico: '+score.hits+' / '+score.rounds;
+    guess=null; document.querySelectorAll('.guess').forEach(b=>b.style.borderColor='');
+  }
+  draw(h,a,p);
+}
+
+function measure(){
+  const btn=$('measure'); btn.disabled=true;
+  let n=0; const iv=setInterval(()=>{
+    const r=Math.random()*100;
+    $('result').style.visibility='visible';
+    $('bar').style.width=r+'%'; $('barpct').textContent='midiendo función de onda…';
+    $('verdict').textContent='⟨Z⟩ colapsando…';
+    if(++n>8){ clearInterval(iv); btn.disabled=false; reveal(); }
+  },90);
+}
+
+function draw(h,a,p){
+  const cv=$('map'), ctx=cv.getContext('2d'), W=cv.width, H=cv.height;
+  const gx=DATA.gx, gy=DATA.gy, z=DATA.z, nx=gx.length, ny=gy.length;
+  const cw=W/nx, ch=H/ny;
+  for(let j=0;j<ny;j++) for(let i=0;i<nx;i++){
+    const v=z[j][i]/DATA.zmax; // -1..1
+    const t=(v+1)/2;
+    const r=Math.round(220-120*t), g=Math.round(70+90*t), b=Math.round(70+150*t);
+    ctx.fillStyle='rgb('+r+','+g+','+b+')';
+    ctx.fillRect(i*cw, H-(j+1)*ch, cw+1, ch+1);
+  }
+  const xr=gx[nx-1]-gx[0], yr=gy[ny-1]-gy[0];
+  if(h&&a){
+    const ex=h.elo-a.elo, fy=h.form-a.form;
+    const px=(Math.max(gx[0],Math.min(gx[nx-1],ex))-gx[0])/xr*W;
+    const py=H-(Math.max(gy[0],Math.min(gy[ny-1],fy))-gy[0])/yr*H;
+    ctx.beginPath(); ctx.arc(px,py,9,0,7); ctx.fillStyle='#fff'; ctx.fill();
+    ctx.lineWidth=3; ctx.strokeStyle='#111'; ctx.stroke();
+  }
+}
+
+fill($('home'), teams.findIndex(t=>t.n==='Argentina'));
+fill($('away'), teams.findIndex(t=>t.n==='Brasil'));
+$('home').onchange=refresh; $('away').onchange=refresh;
+$('measure').onclick=measure;
+$('random').onclick=()=>{ $('home').value=Math.floor(Math.random()*teams.length); let a; do{a=Math.floor(Math.random()*teams.length);}while(a==$('home').value); $('away').value=a; refresh(); };
+document.querySelectorAll('.guess').forEach(b=>b.onclick=()=>{ guess=b.dataset.side; document.querySelectorAll('.guess').forEach(x=>x.style.borderColor=''); b.style.borderColor='var(--color-text-info)'; });
+refresh();
+</script>
+</body></html>

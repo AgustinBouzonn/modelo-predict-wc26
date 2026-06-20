@@ -1,0 +1,95 @@
+# ⚽ Modelo Predictivo Mundial 2026
+
+Modelo **ensemble** que predice los partidos del Mundial 2026 y se **actualiza**
+con nuevos datasets, resultados y noticias a medida que avanza el torneo.
+
+Combina tres enfoques complementarios:
+
+| Modelo | Qué aporta |
+|--------|-----------|
+| **Elo** | Fuerza relativa de cada selección, actualizable partido a partido |
+| **Poisson (Dixon-Coles)** | Goles esperados, marcador más probable y probabilidad de cada resultado |
+| **XGBoost** | Patrones no lineales sobre Elo, forma reciente y descanso |
+
+Además incorpora **sentimiento de noticias** (RSS de Google News + VADER) como
+ajuste en vivo del "momentum mediático" de cada selección.
+
+> ⚛️ **Extra: módulo de Quantum Machine Learning.** Un clasificador cuántico
+> variacional (PennyLane) predice el resultado y se compara contra el ensemble
+> en la pestaña **⚛️ Cuántico** del dashboard. Detalles en
+> [README_QUANTUM.md](README_QUANTUM.md).
+
+## Arquitectura
+
+```
+config/teams_wc26.yaml     Grupos del torneo, alias de nombres y pesos del ensemble
+src/
+  config.py                Rutas y carga de configuración
+  data/sources.py          Ingesta del histórico (scraping) + resultados WC26
+  data/news.py             Noticias + sentimiento por selección
+  features/build_features.py  Features sin fuga de datos (Elo pre-partido, forma)
+  models/elo.py            Modelo Elo
+  models/poisson.py        Dixon-Coles (sklearn PoissonRegressor + ρ)
+  models/ml_model.py       Clasificador XGBoost H/D/A
+  models/ensemble.py       Combina los 3 + ajuste por noticias
+  simulation/tournament.py Monte Carlo del torneo (grupos + llaves)
+  pipeline.py              Orquesta ingesta → entrenamiento → ensemble
+app/dashboard.py           Dashboard Streamlit
+```
+
+## Instalación
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+## Uso
+
+**1. Entrenar (descarga datos + entrena los 3 modelos):**
+```powershell
+python -m src.pipeline
+```
+Opciones: `--no-fetch` (no redescargar), `--no-news` (saltear noticias),
+`--sims 5000` (correr una simulación del torneo al final).
+
+**2. Abrir el dashboard:**
+```powershell
+streamlit run app/dashboard.py
+```
+
+## Cómo actualizarlo con el torneo en curso
+
+- **Resultados automáticos:** el histórico se baja del dataset público de
+  partidos internacionales (se actualiza con cada fecha FIFA). Volvé a correr
+  `python -m src.pipeline` para reentrenar con lo último.
+- **Resultados del Mundial a mano:** agregá filas a `data/raw/wc26_manual.csv`
+  con `date,home_team,away_team,home_score,away_score` y reentrená.
+- **Noticias:** `python -m src.data.news` refresca el sentimiento por selección.
+- **Grupos / fixture:** editá `config/teams_wc26.yaml` para que coincida con el
+  sorteo oficial (los grupos cargados son un placeholder editable).
+
+> Nota: los grupos del config y el emparejamiento del bracket (siembra por Elo)
+> son aproximaciones editables; ajustalos al fixture oficial para máxima precisión.
+
+## Actualización automática (Windows)
+
+Para que se actualice solo todos los días, programá el script de update con el
+Task Scheduler:
+```powershell
+schtasks /create /tn "WC26 Update" /sc daily /st 09:00 ^
+  /tr "powershell -ExecutionPolicy Bypass -File `"%CD%\scripts\daily_update.ps1`""
+```
+El log queda en `data/update.log`. En el dashboard, el botón **🔄 Recargar datos**
+(pestaña Datos) toma lo reentrenado sin reiniciar el proceso.
+
+## Desarrollo
+
+```powershell
+pip install -r requirements-dev.txt
+ruff check src app tests     # lint
+pytest                       # tests (invariantes de modelo, simulación y config)
+```
+Hay CI en `.github/workflows/ci.yml` (ruff + pytest en cada push/PR). Los tests
+usan datos sintéticos, así que corren sin red ni descargas.

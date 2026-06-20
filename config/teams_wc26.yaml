@@ -1,0 +1,105 @@
+# ============================================================
+# Configuración del Mundial 2026 (48 equipos, 12 grupos A-L)
+# ============================================================
+# Los grupos se regeneran desde el fixture real con:
+#     python -m src.data.sources --regen-groups
+# Las letras A-L se asignan por fecha del primer partido (aproximadas);
+# la composición de cada grupo es exacta (derivada del fixture oficial).
+# ============================================================
+
+tournament:
+  name: FIFA World Cup 2026
+  hosts:
+  - United States
+  - Canada
+  - Mexico
+  start_date: '2026-06-11'
+aliases:
+  USA: United States
+  South Korea: Korea Republic
+  North Korea: Korea DPR
+  IR Iran: Iran
+  Ivory Coast: Côte d'Ivoire
+  Cape Verde: Cabo Verde
+  Curacao: Curaçao
+  Czechia: Czech Republic
+groups:
+  A:
+  - Czech Republic
+  - Korea Republic
+  - Mexico
+  - South Africa
+  B:
+  - Bosnia and Herzegovina
+  - Canada
+  - Qatar
+  - Switzerland
+  C:
+  - Australia
+  - Paraguay
+  - Turkey
+  - United States
+  D:
+  - Brazil
+  - Haiti
+  - Morocco
+  - Scotland
+  E:
+  - Japan
+  - Netherlands
+  - Sweden
+  - Tunisia
+  F:
+  - Curaçao
+  - Côte d'Ivoire
+  - Ecuador
+  - Germany
+  G:
+  - Belgium
+  - Egypt
+  - Iran
+  - New Zealand
+  H:
+  - Cabo Verde
+  - Saudi Arabia
+  - Spain
+  - Uruguay
+  I:
+  - Algeria
+  - Argentina
+  - Austria
+  - Jordan
+  J:
+  - France
+  - Iraq
+  - Norway
+  - Senegal
+  K:
+  - Colombia
+  - DR Congo
+  - Portugal
+  - Uzbekistan
+  L:
+  - Croatia
+  - England
+  - Ghana
+  - Panama
+ensemble_weights:
+  elo: 0.5
+  poisson: 0.4
+  ml: 0.1
+elo_confederation_beta: 0.5
+
+# Temperatura del knockout (>1 aplana las probabilidades: a partido único hay más
+# azar). 1.2 deja al favorito ~16% de título (realista). Nota: antes estaba en 1.6
+# para compensar un bug de doble conteo de campeón, ya corregido.
+knockout_temperature: 1.2
+
+# Ventaja de localía de los anfitriones (USA/México/Canadá juegan en casa).
+# 0 = sin ventaja; ~0.25 da un empujón moderado. Tilt logístico sobre P(gana anfitrión).
+host_advantage_tilt: 0.25
+
+# Device para entrenar el XGBoost: "auto" usa GPU (CUDA) solo si el dataset es
+# grande (>150k filas); con los datos actuales (~23k) la CPU es más rápida.
+# Forzar con "cuda" o "cpu". Requiere XGBoost con soporte CUDA + GPU NVIDIA.
+ml_device: auto
