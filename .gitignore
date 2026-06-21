@@ -18,3 +18,6 @@ results_widget_fragment.html
 .coverage
 coverage.xml
 htmlcov/
+
+# Token de IBM Quantum (NUNCA versionar)
+config/ibm_token.txt

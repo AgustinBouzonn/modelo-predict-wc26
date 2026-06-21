@@ -120,6 +120,16 @@ convexo) y se buscó el peso que minimiza el log-loss en el holdout.
   complementaria, no es redundante con el ensemble.
 - Reproducible con `python quantum_ensemble.py`.
 
+### Paso 9 — Del simulador al hardware real (IBM Quantum)
+Se integró el modelo con **qiskit** (`pennylane-qiskit`) para correr el mismo
+circuito en una **QPU real** de IBM Quantum, además del simulador.
+- **Validación** (sin token): el circuito corre en el simulador local de qiskit y
+  los resultados coinciden con PennyLane dentro del ruido de muestreo (4096 shots).
+- **Hardware** (con token gratuito del plan Open): `python quantum_hardware.py
+  --hardware` envía el circuito a la QPU menos ocupada y compara el efecto del
+  **ruido NISQ** sobre las predicciones. El token se lee de una variable de entorno
+  o de `config/ibm_token.txt` (gitignored) — **nunca se versiona**.
+
 ## 📊 Resultados (out-of-sample, holdout 12m, 601 partidos competitivos)
 
 | Modelo | Accuracy | Log-loss | RPS |
@@ -148,10 +158,18 @@ convexo) y se buscó el peso que minimiza el log-loss en el holdout.
 ```powershell
 python quantum_match.py            # entrena (quantum.joblib + quantum_demo.json)
 python quantum_eval.py             # cuántico vs ensemble (out-of-sample)
+python quantum_ensemble.py         # ¿aporta al ensemble? (blend)
 streamlit run app/dashboard.py     # dashboard -> pestaña ⚛️ Cuántico
+
+# Hardware real de IBM Quantum (requiere: pip install pennylane-qiskit)
+python quantum_hardware.py            # valida en simulador qiskit
+python quantum_hardware.py --hardware # corre en una QPU real (necesita token)
 ```
 
-Requiere PennyLane: `pip install pennylane`.
+Requiere PennyLane: `pip install pennylane`. Para el Paso 9 (hardware):
+`pip install pennylane-qiskit` y un token gratuito de
+[quantum.ibm.com](https://quantum.ibm.com) en `IBM_QUANTUM_TOKEN` o
+`config/ibm_token.txt`.
 
 ## 🚀 Próximas mejoras (lo que falta probar)
 
@@ -162,10 +180,11 @@ Requiere PennyLane: `pip install pennylane`.
   confederación o fuerza de plantel (requiere histórico de planteles sin fuga).
 - **Otra codificación**: `AmplitudeEmbedding` (codifica más info por qubit, no
   necesita 1 qubit por feature).
-- **Hardware real**: correr el circuito final en un backend de IBM Quantum (vía
-  qiskit) y comparar con el simulador (incluye mitigación de ruido).
+- **Mitigación de ruido** sobre el hardware real (Paso 9 ya corre el circuito en
+  la QPU; falta sumar *error mitigation* del runtime de qiskit).
 
 > ✅ El ensamblado ya se probó (Paso 8): aporta una mejora marginal (0.21%).
+> ✅ La integración con hardware ya está lista (Paso 9): `python quantum_hardware.py`.
 
 ## Stack
 
