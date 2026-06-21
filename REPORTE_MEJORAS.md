@@ -85,6 +85,16 @@ Tras el upgrade a **4 qubits, multiclase (1-X-2)** con early-stopping y
   positivo: el cuántico aporta algo de señal complementaria, no es redundante.
   Reproducible con `python quantum_ensemble.py`.
 
+## 4d. Calibración de probabilidades
+
+Se probó **temperature scaling** (p^(1/T) renormalizado) sobre el ensemble:
+ajustando T en la 1ª mitad del holdout y evaluando en la 2ª (out-of-sample).
+
+- Temperatura óptima: **T ≈ 1.00** → el ensemble **ya está bien calibrado**;
+  la calibración post-hoc no mejora el log-loss (+0.00%).
+- Conclusión: las probabilidades que reporta el modelo son confiables tal cual
+  (cuando dice 60%, acierta ~60%). Reproducible con `python calibration_experiment.py`.
+
 ## 4c. Despliegue
 
 - **Demo en vivo** del predictor cuántico interactivo (GitHub Pages):
