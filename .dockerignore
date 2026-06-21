@@ -1,0 +1,14 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+data/raw/
+data/processed/
+data/news/
+models/*.joblib
+*.log
+.streamlit/
+docs/
+.github/

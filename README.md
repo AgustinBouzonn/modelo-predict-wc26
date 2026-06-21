@@ -1,6 +1,7 @@
 # ⚽ Modelo Predictivo Mundial 2026
 
 [![CI](https://github.com/AgustinBouzonn/modelo-predict-wc26/actions/workflows/ci.yml/badge.svg)](https://github.com/AgustinBouzonn/modelo-predict-wc26/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/AgustinBouzonn/modelo-predict-wc26/graph/badge.svg)](https://codecov.io/gh/AgustinBouzonn/modelo-predict-wc26)
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B?logo=streamlit&logoColor=white)
 ![PennyLane](https://img.shields.io/badge/PennyLane-QML-7B3FE4)
@@ -62,6 +63,23 @@ modelo contra el mercado de apuestas.
 
 ## 🏗️ Arquitectura
 
+```mermaid
+flowchart LR
+    S[Scraping<br/>resultados + noticias] --> F[Features<br/>sin fuga de datos]
+    F --> E1[Elo]
+    F --> E2[Poisson<br/>Dixon-Coles]
+    F --> E3[XGBoost]
+    F --> Q[VQC Cuántico<br/>PennyLane]
+    E1 --> ENS[Ensemble]
+    E2 --> ENS
+    E3 --> ENS
+    N[Sentimiento<br/>de noticias] --> ENS
+    ENS --> SIM[Monte Carlo<br/>del torneo]
+    ENS --> DASH[Dashboard<br/>Streamlit]
+    SIM --> DASH
+    Q -. comparación .-> DASH
+```
+
 ```
 config/teams_wc26.yaml        Grupos del torneo, alias y pesos del ensemble
 src/
@@ -87,6 +105,13 @@ quantum_match.py              Entrena el modelo cuántico · quantum_eval.py lo 
 python -m venv .venv
 source .venv/bin/activate           # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+```
+
+O con **Docker** (la app entrena sola en el primer arranque):
+
+```bash
+docker build -t wc26 .
+docker run -p 8501:8501 wc26        # -> http://localhost:8501
 ```
 
 ## ▶️ Uso
