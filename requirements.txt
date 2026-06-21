@@ -18,7 +18,7 @@ feedparser>=6.0
 vaderSentiment>=3.3
 
 # Dashboard
-streamlit>=1.36
+streamlit>=1.58.0
 plotly>=5.22
 
 # Persistencia de modelos
