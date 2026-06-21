@@ -13,3 +13,8 @@ models/*.joblib
 *.log
 results_widget_fragment.html
 .claude/
+
+# Cobertura
+.coverage
+coverage.xml
+htmlcov/
