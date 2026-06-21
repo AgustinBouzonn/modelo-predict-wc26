@@ -108,9 +108,17 @@ MESES = ["", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct
 
 
 # --------------------------------------------------------------------------- #
-@st.cache_resource(show_spinner="Cargando modelos ...")
+@st.cache_resource(show_spinner="Cargando modelos (primer arranque puede tardar) ...")
 def get_ensemble():
     p = MODELS_DIR / "ensemble.joblib"
+    if not p.exists():
+        # Bootstrap para deploys limpios (Streamlit Cloud): entrena si falta.
+        try:
+            from src.pipeline import train_all
+            train_all(fetch=True, fetch_news=False)
+        except Exception as e:  # noqa: BLE001
+            st.error(f"No se pudieron entrenar los modelos automáticamente: {e}")
+            return None
     return EnsemblePredictor.load(p) if p.exists() else None
 
 
@@ -219,11 +227,18 @@ def get_baseline(team, formation):
     return team_lineup_baseline(team, formation)
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner="Entrenando el modelo cuántico (primer arranque) ...")
 def get_quantum_model():
     """Carga el modelo cuántico entrenado (multiclase 1-X-2)."""
     from src.models.quantum import QuantumMatchClassifier
     p = MODELS_DIR / "quantum.joblib"
+    if not p.exists():
+        # Bootstrap: entrena el cuántico + exporta el JSON si faltan.
+        try:
+            import quantum_match
+            quantum_match.main()
+        except Exception:  # noqa: BLE001
+            return None
     return QuantumMatchClassifier.load(p) if p.exists() else None
 
 
@@ -645,8 +660,8 @@ with tab_match:
 # ============================ CUÁNTICO ===================================== #
 with tab_quantum:
     st.subheader("⚛️ Clasificador Cuántico Variacional (QML)")
-    qd = get_quantum()
     qmodel = get_quantum_model()
+    qd = get_quantum()
     if qd is None or qmodel is None:
         st.info("No hay modelo cuántico. Entrenalo con:  `python quantum_match.py`")
     else:

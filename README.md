@@ -11,6 +11,9 @@ con nuevos datasets, resultados y noticias a medida que avanza el torneo. Incluy
 un dashboard interactivo en Streamlit y un módulo experimental de **Machine
 Learning cuántico** comparado contra los modelos clásicos.
 
+> 🔮 **[Probá el predictor cuántico en vivo →](https://agustinbouzonn.github.io/modelo-predict-wc26/)**
+> (elegí dos selecciones y "medí el qubit" — corre en tu navegador, sin instalar nada)
+
 Combina tres enfoques complementarios:
 
 | Modelo | Qué aporta |
@@ -107,6 +110,10 @@ python quantum_eval.py                          # cuántico vs ensemble (RPS)
 ```bash
 streamlit run app/dashboard.py
 ```
+
+> ☁️ También se puede **publicar gratis en Streamlit Community Cloud** (la app
+> entrena sola en el primer arranque si faltan los modelos). Pasos en
+> **[DEPLOY.md](DEPLOY.md)**.
 
 ## 🔄 Cómo actualizarlo con el torneo en curso
 
