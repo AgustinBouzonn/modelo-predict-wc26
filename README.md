@@ -37,7 +37,7 @@ ajuste en vivo del "momentum mediático" de cada selección.
 
 | Modelo | Accuracy | Log-loss | RPS |
 |--------|:--------:|:--------:|:---:|
-| 🧮 **Ensemble** (Elo · Poisson · XGBoost) | **63.7%** | **0.837** | **0.160** |
+| 🧮 **Ensemble** (Elo · Poisson · XGBoost) | **64.1%** | **0.834** | **0.160** |
 | ⚛️ Cuántico (4 qubits, 1-X-2) | 61.2% | 0.892 | 0.175 |
 | 📏 Baseline (frecuencias 1-X-2) | 46.4% | 1.061 | 0.234 |
 

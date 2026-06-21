@@ -86,20 +86,9 @@ groups:
   - Panama
 ensemble_weights:
   elo: 0.5
-  poisson: 0.4
-  ml: 0.1
+  poisson: 0.5
+  ml: 0.0
 elo_confederation_beta: 0.5
-
-# Temperatura del knockout (>1 aplana las probabilidades: a partido único hay más
-# azar). 1.2 deja al favorito ~16% de título (realista). Nota: antes estaba en 1.6
-# para compensar un bug de doble conteo de campeón, ya corregido.
 knockout_temperature: 1.2
-
-# Ventaja de localía de los anfitriones (USA/México/Canadá juegan en casa).
-# 0 = sin ventaja; ~0.25 da un empujón moderado. Tilt logístico sobre P(gana anfitrión).
 host_advantage_tilt: 0.25
-
-# Device para entrenar el XGBoost: "auto" usa GPU (CUDA) solo si el dataset es
-# grande (>150k filas); con los datos actuales (~23k) la CPU es más rápida.
-# Forzar con "cuda" o "cpu". Requiere XGBoost con soporte CUDA + GPU NVIDIA.
 ml_device: auto

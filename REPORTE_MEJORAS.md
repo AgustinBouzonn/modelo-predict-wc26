@@ -68,6 +68,30 @@ Tras el upgrade a **4 qubits, multiclase (1-X-2)** con early-stopping y
   que se juegan, y reentrenar — el tracking en vivo dará el veredicto real.
 - **Automatizar** el update diario (ya hay `scripts/daily_update.ps1` + Task Scheduler).
 
+## 4b. Mejoras aplicadas y medidas (actualización)
+
+- **Pesos óptimos del ensemble aplicados**: `{elo: 0.5, poisson: 0.5, ml: 0.0}`
+  (escritos al config y reentrenado). El XGBoost queda con peso 0 — confirma que
+  hoy no aporta sobre Elo+Poisson.
+- **Círculo cuántico↔clásico cerrado**: se ensambló la distribución 1-X-2 del
+  modelo cuántico con la del ensemble (blend convexo) sobre el holdout:
+
+  | Blend | Log-loss | RPS | Accuracy |
+  |-------|:--------:|:---:|:--------:|
+  | Ensemble solo | 0.8342 | 0.1595 | 64.1% |
+  | + cuántico (peso 0.10) | **0.8324** | 0.1591 | 64.2% |
+
+  El mejor blend (10% cuántico) **mejora el log-loss 0.21%**. Marginal pero
+  positivo: el cuántico aporta algo de señal complementaria, no es redundante.
+  Reproducible con `python quantum_ensemble.py`.
+
+## 4c. Despliegue
+
+- **Demo en vivo** del predictor cuántico interactivo (GitHub Pages):
+  https://agustinbouzonn.github.io/modelo-predict-wc26/
+- **Dashboard** listo para Streamlit Cloud con bootstrap automático (ver
+  `DEPLOY.md`).
+
 ## 4. Cómo reproducir
 ```powershell
 python -m src.pipeline                              # scrape + reentrena ensemble

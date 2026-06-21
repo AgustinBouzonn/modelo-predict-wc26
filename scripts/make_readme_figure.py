@@ -32,7 +32,7 @@ plt.rcParams.update({
 
 def fig_quantum():
     models = ["Baseline", "Cuántico (4q)", "Ensemble"]
-    acc = [46.4, 61.2, 63.7]
+    acc = [46.4, 61.2, 64.1]
     rps = [0.234, 0.175, 0.160]
     colors = ["#64748b", "#a855f7", "#16a34a"]
 
@@ -105,8 +105,8 @@ def fig_performance():
                  fontsize=14, fontweight="bold", color="#f1f5f9", y=0.99)
 
     labels = ["Azar", "Siempre\nlocal", "Ensemble"]
-    acc = [33.3, 46.4, 63.7]
-    ll = [1.099, 1.061, 0.837]
+    acc = [33.3, 46.4, 64.1]
+    ll = [1.099, 1.061, 0.834]
     cols_a = ["#64748b", "#64748b", "#16a34a"]
 
     ax1.bar(labels, acc, color=cols_a, width=0.6)

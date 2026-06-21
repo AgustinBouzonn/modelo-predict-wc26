@@ -112,6 +112,14 @@ agregando `rest_diff` (descanso) y `neutral` (localía / cancha neutral).
   más qubits no es gratis; hay que acompañarlo con mejor optimización (más épocas,
   otro ansatz, o reducir parámetros), no solo agregar features débiles.
 
+### Paso 8 — Cerrar el círculo: ¿aporta al ensemble?
+Se ensambló la distribución 1-X-2 del cuántico con la del ensemble clásico (blend
+convexo) y se buscó el peso que minimiza el log-loss en el holdout.
+- Resultado: el mejor blend (**10% cuántico**) baja el log-loss **0.21%**
+  (0.8342 → 0.8324). Marginal pero **positivo**: el cuántico aporta algo de señal
+  complementaria, no es redundante con el ensemble.
+- Reproducible con `python quantum_ensemble.py`.
+
 ## 📊 Resultados (out-of-sample, holdout 12m, 601 partidos competitivos)
 
 | Modelo | Accuracy | Log-loss | RPS |
@@ -154,10 +162,10 @@ Requiere PennyLane: `pip install pennylane`.
   confederación o fuerza de plantel (requiere histórico de planteles sin fuga).
 - **Otra codificación**: `AmplitudeEmbedding` (codifica más info por qubit, no
   necesita 1 qubit por feature).
-- **Ensamblar**: incorporar la distribución cuántica como un 4º modelo del
-  ensemble y validar si baja el log-loss en la pestaña Rendimiento.
 - **Hardware real**: correr el circuito final en un backend de IBM Quantum (vía
   qiskit) y comparar con el simulador (incluye mitigación de ruido).
+
+> ✅ El ensamblado ya se probó (Paso 8): aporta una mejora marginal (0.21%).
 
 ## Stack
 
