@@ -31,6 +31,13 @@ def load_matches(fetch: bool = True) -> pd.DataFrame:
 
 def train_all(fetch: bool = True, fetch_news: bool = True, n_sims: int = 0) -> EnsemblePredictor:
     cfg = load_config()
+    if fetch:
+        # Auto-traer resultados en vivo (the-odds-api /scores) antes de procesar
+        try:
+            from .data.live_results import update_manual
+            update_manual()
+        except Exception as e:  # noqa: BLE001
+            print(f"[aviso] resultados live no disponibles: {type(e).__name__}")
     matches = load_matches(fetch=fetch)
     print(f"\nEntrenando con {len(matches):,} partidos "
           f"({matches['date'].min().date()} a {matches['date'].max().date()})\n")

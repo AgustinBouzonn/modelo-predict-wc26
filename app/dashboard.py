@@ -101,6 +101,28 @@ h3 {letter-spacing:-.3px;}
 .bteam.win {background:rgba(22,163,74,.18); font-weight:700;}
 .bteam.lose {opacity:.5;}
 .vs {text-align:center; font-weight:800; color:#94a3b8; font-size:1.05rem; margin-bottom:6px;}
+
+/* Cuadro de dos lados (llaves) */
+.bracket2 {display:flex; align-items:stretch; gap:6px; overflow-x:auto; padding:10px 2px;}
+.side {display:flex; gap:8px;}
+.col {display:flex; flex-direction:column; justify-content:space-around; min-width:132px; gap:6px;}
+.col .ct {font-size:.62rem; font-weight:800; color:#4ade80; text-transform:uppercase;
+        text-align:center; letter-spacing:.5px; margin-bottom:2px;}
+.tie {border:1px solid rgba(255,255,255,.08); border-radius:8px; overflow:hidden; background:#101a2c;}
+.tie .t {padding:4px 7px; font-size:.74rem; display:flex; align-items:center; gap:5px;}
+.tie .t.w {background:rgba(22,163,74,.2); font-weight:700;}
+.tie .t.l {opacity:.45;}
+.tie .t .pl {font-size:.6rem; color:#64748b; margin-left:auto;}
+.center {display:flex; flex-direction:column; justify-content:center; align-items:center;
+        min-width:150px; gap:6px; padding:0 4px;}
+.center .ftitle {font-size:.72rem; font-weight:800; color:#f59e0b; text-transform:uppercase; letter-spacing:1px;}
+.center .champ {margin-top:8px; text-align:center; font-weight:800; font-size:1.05rem;
+        background:linear-gradient(135deg,#f59e0b,#b45309); -webkit-background-clip:text;
+        -webkit-text-fill-color:transparent; background-clip:text;}
+.cruce {display:flex; gap:10px; align-items:center; padding:6px 10px; margin:3px 0;
+        border:1px solid rgba(255,255,255,.07); border-radius:9px; background:#101a2c; font-size:.85rem;}
+.cruce .gl {font-weight:800; background:#16a34a; color:#06140c; border-radius:6px; padding:2px 8px;}
+.cruce .opt {flex:1;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -158,15 +180,53 @@ def predict_cached(home, away, neutral=True):
     return get_ensemble().predict(home, away, neutral=neutral)
 
 
+@st.cache_data(show_spinner=False)
+def market_probs_map():
+    """{(home, away): (p_home, p_draw, p_away)} de las cuotas guardadas (sin gastar API)."""
+    from src.evaluation.odds_benchmark import ODDS_CSV, implied_probs
+    if not ODDS_CSV.exists():
+        return {}
+    df = pd.read_csv(ODDS_CSV, comment="#").dropna(subset=["home_team", "away_team"])
+    out = {}
+    for o in df.itertuples(index=False):
+        try:
+            out[(canonical(o.home_team, get_config()), canonical(o.away_team, get_config()))] = \
+                implied_probs(o.odds_home, o.odds_draw, o.odds_away)
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+def predict_mode(home, away, mode="🤖 Modelo", w=0.5):
+    """Predicción según la fuente elegida. El mercado solo cubre partidos con cuota;
+    sin cuota cae al modelo. Devuelve (dict_pred, tiene_mercado)."""
+    base = dict(predict_cached(home, away))
+    mk = market_probs_map().get((home, away))
+    if mode.endswith("Modelo") or mk is None:
+        return base, (mk is not None)
+    ph, pd_, pa = mk
+    if mode.endswith("Mercado"):
+        base.update(p_home=ph, p_draw=pd_, p_away=pa)
+        return base, True
+    # Blend: w*modelo + (1-w)*mercado, renormalizado
+    bh = w * base["p_home"] + (1 - w) * ph
+    bd = w * base["p_draw"] + (1 - w) * pd_
+    ba = w * base["p_away"] + (1 - w) * pa
+    s = bh + bd + ba
+    base.update(p_home=bh / s, p_draw=bd / s, p_away=ba / s)
+    return base, True
+
+
 @st.cache_resource(show_spinner=False)
-def get_simulator():
+def get_simulator(mode="modelo", blend_w=0.5):
     from src.simulation.tournament import TournamentSimulator
-    return TournamentSimulator(get_ensemble(), get_config())
+    return TournamentSimulator(get_ensemble(), get_config(),
+                               market=market_probs_map(), mode=mode, blend_w=blend_w)
 
 
 @st.cache_data(show_spinner=False)
-def get_bracket():
-    return get_simulator().projected_bracket()
+def get_bracket(mode="modelo", blend_w=0.5):
+    return get_simulator(mode, blend_w).official_bracket()
 
 
 @st.cache_data(show_spinner=False)
@@ -319,6 +379,21 @@ if ens is None:
     st.warning("No hay modelos entrenados. Corré primero: `python -m src.pipeline`")
     st.stop()
 
+# Selector global de fuente de predicción
+with st.sidebar:
+    st.markdown("### 🎚️ Fuente de predicción")
+    MODE = st.radio("Modo", ["🤖 Modelo", "🔀 Blend", "🏦 Mercado"], index=0,
+                    help="Aplica a las predicciones de partidos (Fixture y Partido).")
+    BLEND_W = 0.5
+    if MODE.endswith("Blend"):
+        BLEND_W = st.slider("Peso del modelo", 0.0, 1.0, 0.5, 0.1)
+        st.caption(f"{BLEND_W:.0%} modelo · {1-BLEND_W:.0%} mercado")
+    st.caption("El **mercado** son las cuotas reales (the-odds-api); solo cubre partidos "
+               "próximos con cuota. Sin cuota → cae al modelo.")
+    n_mkt = len(market_probs_map())
+    st.caption(f"📊 {n_mkt} partidos con cuota de mercado disponibles.")
+
+MODE_KEY = MODE.split()[-1].lower()   # "modelo" | "blend" | "mercado"
 teams = sorted(all_teams(cfg))
 tabs = st.tabs(["⚛️ Cuántico", "🗓️ Fixture", "🗺️ Torneo", "🏆 Llaves", "👥 Selecciones",
                 "⚽ Partido", "📊 Ranking", "🎲 Simular",
@@ -403,10 +478,11 @@ with tab_fix:
         elif view == "Solo jugados":
             data = data[data["played"]]
 
-        preds = {i: predict_cached(r.home, r.away)
+        preds = {i: predict_mode(r.home, r.away, MODE, BLEND_W)[0]
                  for i, r in data[~data["played"]].iterrows()}
-        st.markdown('<div class="pct" style="max-width:760px;margin:6px 0 0">'
-                    '<span>🔵 local</span><span>⚪ empate</span><span>🔴 visitante</span></div>',
+        st.markdown(f'<div class="pct" style="max-width:760px;margin:6px 0 0">'
+                    f'<span>Fuente: <b>{MODE}</b></span>'
+                    f'<span>🔵 local</span><span>⚪ empate</span><span>🔴 visitante</span></div>',
                     unsafe_allow_html=True)
         html, cur = [], None
         for i, r in data.iterrows():
@@ -441,10 +517,25 @@ with tab_tourn:
                               width="stretch")
 
     st.divider()
+    st.markdown("#### 🎯 Escenarios de clasificación")
+    st.caption("Qué necesita cada selección según puntos y partidos que le quedan en el grupo.")
+    sc_g = st.selectbox("Grupo", letters, key="scen_g")
+    sc = get_simulator(MODE_KEY, BLEND_W).group_scenarios(sc_g)
+    if sc:
+        scdf = pd.DataFrame(sc)[["team", "pts", "jugados", "restan", "max_pts", "estado"]]
+        scdf.columns = ["Selección", "Pts", "Jugados", "Restan", "Máx pts", "Situación"]
+
+        def _color_estado(v):
+            c = {"Clasificado": "rgba(34,197,94,.22)", "Depende": "rgba(234,179,8,.15)"}.get(v)
+            return f"background-color: {c}" if c else ""
+        st.dataframe(scdf.style.map(_color_estado, subset=["Situación"]),
+                     width="stretch", hide_index=True)
+
+    st.divider()
     st.subheader("Camino al título (proyección)")
     if st.button("🎲 Proyectar torneo", type="primary", key="proj"):
         with st.spinner("Simulando 3000 torneos ..."):
-            st.session_state["proj_res"] = get_simulator().run(n_sims=3000)
+            st.session_state["proj_res"] = get_simulator(MODE_KEY, BLEND_W).run(n_sims=3000)
     if "proj_res" in st.session_state:
         res = st.session_state["proj_res"].head(20)
         ren = {"P_16avos": "16avos", "P_8vos": "8vos", "P_4tos": "4tos",
@@ -459,31 +550,63 @@ with tab_tourn:
 
 # ============================ LLAVES (bracket) ============================= #
 with tab_brkt:
-    st.subheader("Llaves eliminatorias (proyección)")
-    st.caption("Cuadro más probable: clasifican los 2 mejores de cada grupo + 8 mejores "
-               "terceros (por puntos y Elo); en cada cruce avanza el favorito. "
-               "Siembra por Elo — se actualiza con los resultados de grupos.")
-    rounds = get_bracket()
-    if not rounds:
-        st.info("Todavía no se puede proyectar el cuadro.")
-    else:
-        names = ["16avos", "8vos", "4tos", "Semis", "Final"]
-        html = ['<div class="bracket">']
-        for i, rnd in enumerate(rounds):
-            rn = names[i] if i < len(names) else f"R{i}"
-            html.append(f'<div class="round"><div class="rtitle">{rn}</div>')
-            for m in rnd:
-                wa = "win" if m["winner"] == m["a"] else "lose"
-                wb = "win" if m["winner"] == m["b"] else "lose"
-                html.append(f'<div class="bmatch">'
-                            f'<div class="bteam {wa}"><span>{flag_img(m["a"], 18)} {m["a"]}</span><span>{int(m["pa"]*100)}%</span></div>'
-                            f'<div class="bteam {wb}"><span>{flag_img(m["b"], 18)} {m["b"]}</span><span>{int(m["pb"]*100)}%</span></div></div>')
+    st.subheader("Llaves eliminatorias — cuadro oficial")
+    st.caption(f"Cuadro OFICIAL de la FIFA (mapa posición-de-grupo → llave). Fuente de "
+               f"probabilidad: **{MODE}**. En partidos de grupos con cuota se aplica el "
+               f"filtro; los cruces de eliminatorias (sin cuota) usan el modelo. Los dos "
+               f"lados convergen en la final.")
+    b = get_bracket(MODE_KEY, BLEND_W)
+
+    def _tie(m, mini=False):
+        wa = "w" if m["winner"] == m["a"] else "l"
+        wb = "w" if m["winner"] == m["b"] else "l"
+        pa = f'<span class="pl">{int(m["pa"]*100)}%</span>' if not mini else ""
+        pb = f'<span class="pl">{int(m["pb"]*100)}%</span>' if not mini else ""
+        la = f'<span class="pl">{m["la"]}</span>' if m.get("la") else ""
+        lb = f'<span class="pl">{m["lb"]}</span>' if m.get("lb") else ""
+        return (f'<div class="tie">'
+                f'<div class="t {wa}">{flag_img(m["a"], 16)} {m["a"]} {la}{pa}</div>'
+                f'<div class="t {wb}">{flag_img(m["b"], 16)} {m["b"]} {lb}{pb}</div></div>')
+
+    cols_lbl = ["16avos", "8vos", "4tos", "Semis"]
+
+    def _side(rounds, reverse=False):
+        order = list(range(len(rounds)))
+        if reverse:
+            order = order[::-1]
+        html = ['<div class="side">']
+        for ci in order:
+            html.append('<div class="col">')
+            html.append(f'<div class="ct">{cols_lbl[ci]}</div>')
+            for m in rounds[ci]:
+                html.append(_tie(m, mini=(ci > 0)))
             html.append("</div>")
-        champ = rounds[-1][0]["winner"]
-        html.append('<div class="round"><div class="rtitle">Campeón</div>'
-                    f'<div class="bmatch"><div class="bteam win" style="font-size:.95rem">🏆 {flag_img(champ, 22)} {champ}</div></div></div>')
         html.append("</div>")
-        st.markdown("".join(html), unsafe_allow_html=True)
+        return "".join(html)
+
+    fin = b["final"]
+    center = (f'<div class="center"><div class="ftitle">★ Final ★</div>{_tie(fin)}'
+              f'<div class="champ">🏆 {flag_img(b["champion"], 22)} {b["champion"]}</div></div>')
+    st.markdown(f'<div class="bracket2">{_side(b["left"])}{center}'
+                f'{_side(b["right"], reverse=True)}</div>', unsafe_allow_html=True)
+
+    # Con quién se cruza cada grupo según salga 1º o 2º
+    st.divider()
+    st.markdown("#### 🔀 ¿Con quién se cruza cada grupo en 16avos?")
+    st.caption("Según el mapa oficial: depende de si la selección sale 1ª o 2ª de su grupo.")
+    cruces = b["cruces"]
+    gcols = st.columns(3)
+    for i, g in enumerate(sorted(cruces)):
+        c = cruces[g]
+        o1 = c.get("1"); o2 = c.get("2")
+        txt = ""
+        if o1:
+            txt += f'<div>Si sale <b>1º</b> → vs {flag_img(o1[1], 16)} <b>{o1[1]}</b> <span style="color:#64748b">({o1[0]})</span></div>'
+        if o2:
+            txt += f'<div>Si sale <b>2º</b> → vs {flag_img(o2[1], 16)} <b>{o2[1]}</b> <span style="color:#64748b">({o2[0]})</span></div>'
+        gcols[i % 3].markdown(
+            f'<div class="cruce"><span class="gl">{g}</span><div class="opt">{txt}</div></div>',
+            unsafe_allow_html=True)
 
 # ============================ SELECCIONES ================================== #
 with tab_teams:
@@ -544,6 +667,22 @@ with tab_teams:
                 p = predict_cached(r.home, r.away)
                 mine = p["p_home"] if r.home == sel else p["p_away"]
                 st.write(f"🆚 **{rival}** · {_fmt_date(r.date)} — gana {sel}: **{mine*100:.0f}%**")
+
+        # Camino al título proyectado (bracket oficial)
+        path = get_simulator(MODE_KEY, BLEND_W).title_path(sel, get_bracket(MODE_KEY, BLEND_W))
+        if path:
+            st.markdown("**🏆 Camino al título proyectado**")
+            for s in path:
+                me_adv = s["winner"] == sel
+                rival = s["b"] if s["a"] == sel else (s["a"] if s["b"] == sel else None)
+                if rival:
+                    line = f"{flag_img(rival, 16)} {rival}"
+                else:
+                    line = f"{s['a']} vs {s['b']}"
+                icon = "✅" if me_adv else "⬜"
+                st.markdown(f"<div style='font-size:.86rem;margin:1px 0'>{icon} <b>{s['ronda']}</b> · "
+                            f"{line} <span style='color:#64748b'>(favorito: {s['winner']})</span></div>",
+                            unsafe_allow_html=True)
         sq = get_squads()
         team_sq = sq[sq["team"] == sel]
         if not team_sq.empty:
@@ -641,6 +780,30 @@ with tab_match:
                 f"<div class='vs'>{flag_img(home, 26)} {home} &nbsp;—&nbsp; {away} {flag_img(away, 26)}</div>",
                 unsafe_allow_html=True)
             st.markdown(pitch_match_svg(xi_h, xi_a, home, away), unsafe_allow_html=True)
+
+        # Comparación de las 3 fuentes (si hay cuota de mercado para este partido)
+        mk = market_probs_map().get((home, away))
+        st.divider()
+        st.markdown("#### 🎚️ Modelo vs Blend vs Mercado")
+        if mk is None:
+            st.caption("Este partido no tiene cuota de mercado (no es un próximo partido con "
+                       "cuotas). Solo se muestra el modelo.")
+            mdl = predict_cached(home, away)
+            st.dataframe(pd.DataFrame([{"Fuente": "🤖 Modelo", home: mdl["p_home"],
+                                        "Empate": mdl["p_draw"], away: mdl["p_away"]}])
+                         .style.format({home: "{:.0%}", "Empate": "{:.0%}", away: "{:.0%}"}),
+                         width="stretch", hide_index=True)
+        else:
+            mdl = predict_cached(home, away)
+            bl, _ = predict_mode(home, away, "🔀 Blend", BLEND_W)
+            rows = [{"Fuente": "🤖 Modelo", home: mdl["p_home"], "Empate": mdl["p_draw"], away: mdl["p_away"]},
+                    {"Fuente": f"🔀 Blend ({BLEND_W:.0%}/{1-BLEND_W:.0%})", home: bl["p_home"],
+                     "Empate": bl["p_draw"], away: bl["p_away"]},
+                    {"Fuente": "🏦 Mercado", home: mk[0], "Empate": mk[1], away: mk[2]}]
+            st.dataframe(pd.DataFrame(rows).style.format(
+                {home: "{:.0%}", "Empate": "{:.0%}", away: "{:.0%}"}),
+                width="stretch", hide_index=True)
+            st.caption("El blend mezcla modelo y mercado; ajustá el peso en la barra lateral.")
 
         # Historial de enfrentamientos directos
         h2h = get_h2h(home, away)
@@ -793,7 +956,7 @@ with tab_sim:
     n_sims = st.slider("Simulaciones", 500, 20000, 3000, step=500)
     if st.button("▶️ Correr simulación", type="primary"):
         with st.spinner(f"Simulando {n_sims:,} torneos ..."):
-            st.session_state["sim_res"] = get_simulator().run(n_sims=n_sims)
+            st.session_state["sim_res"] = get_simulator(MODE_KEY, BLEND_W).run(n_sims=n_sims)
     if "sim_res" in st.session_state:
         res = st.session_state["sim_res"]
         top = res.head(15)
@@ -891,7 +1054,7 @@ with tab_perf:
         sim = st.session_state.get("sim_res")
         if sim is None:
             with st.spinner("Simulando 4000 torneos ..."):
-                sim = get_simulator().run(n_sims=4000)
+                sim = get_simulator(MODE_KEY, BLEND_W).run(n_sims=4000)
                 st.session_state["sim_res"] = sim
         st.session_state["champ_bt"] = champion_benchmark(
             sim.set_index("team")["P_campeon"].to_dict())

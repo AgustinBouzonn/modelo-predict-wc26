@@ -35,25 +35,25 @@ groups:
   - Qatar
   - Switzerland
   C:
-  - Australia
-  - Paraguay
-  - Turkey
-  - United States
-  D:
   - Brazil
   - Haiti
   - Morocco
   - Scotland
+  D:
+  - Australia
+  - Paraguay
+  - Turkey
+  - United States
   E:
-  - Japan
-  - Netherlands
-  - Sweden
-  - Tunisia
-  F:
   - Curaçao
   - Côte d'Ivoire
   - Ecuador
   - Germany
+  F:
+  - Japan
+  - Netherlands
+  - Sweden
+  - Tunisia
   G:
   - Belgium
   - Egypt
@@ -65,15 +65,15 @@ groups:
   - Spain
   - Uruguay
   I:
-  - Algeria
-  - Argentina
-  - Austria
-  - Jordan
-  J:
   - France
   - Iraq
   - Norway
   - Senegal
+  J:
+  - Algeria
+  - Argentina
+  - Austria
+  - Jordan
   K:
   - Colombia
   - DR Congo
