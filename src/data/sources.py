@@ -78,13 +78,41 @@ def build_processed(min_year: int = 2002) -> pd.DataFrame:
     df["goal_diff"] = df["home_score"] - df["away_score"]
     df["total_goals"] = df["home_score"] + df["away_score"]
 
-    # Peso por importancia del torneo (para Elo y para ponderar el entrenamiento)
-    df["match_weight"] = df["tournament"].map(tournament_weight).fillna(1.0)
+    # Peso por torneo + flag de eliminatorias + boost del torneo en curso
+    df = enrich_matches(df, cfg)
 
     df = df.sort_values("date").reset_index(drop=True)
     out = PROCESSED_DIR / "matches.parquet"
     df.to_parquet(out, index=False)
     print(f"Procesados {len(df):,} partidos (desde {min_year}) -> {out}")
+    return df
+
+
+def enrich_matches(df: pd.DataFrame, cfg: dict | None = None) -> pd.DataFrame:
+    """Columnas derivadas del entrenamiento: match_weight (importancia del
+    torneo), is_knockout (eliminatorias de Mundiales) y el boost del torneo
+    en curso (la forma del WC26 es la señal más fresca: pesa más)."""
+    cfg = cfg or load_config()
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    df["match_weight"] = df["tournament"].map(tournament_weight).fillna(1.0)
+
+    is_wc = (df["tournament"].str.contains("FIFA World Cup", na=False)
+             & ~df["tournament"].str.contains("qualification", case=False, na=False))
+
+    # Eliminatorias: en ediciones de 64 partidos (2002-2022) son los últimos 16
+    # por fecha; en 2026 (48 equipos) todo lo posterior al cierre de grupos.
+    df["is_knockout"] = False
+    for year, g in df[is_wc].groupby(df["date"].dt.year):
+        if year == 2026:
+            df.loc[g.index[g["date"] >= pd.Timestamp("2026-06-29")], "is_knockout"] = True
+        elif len(g) >= 48:
+            df.loc[g.sort_values("date").index[-16:], "is_knockout"] = True
+
+    boost = float(cfg.get("current_tournament_boost", 1.0))
+    if boost > 1.0:
+        cur = is_wc & (df["date"] >= pd.Timestamp("2026-06-01"))
+        df.loc[cur, "match_weight"] *= boost
     return df
 
 
@@ -353,12 +381,26 @@ def update_all() -> pd.DataFrame:
     manual = append_manual_results()
     if not manual.empty:
         merged = pd.concat([df, manual], ignore_index=True)
-        merged["match_weight"] = merged["tournament"].map(tournament_weight).fillna(1.0)
         merged["date"] = pd.to_datetime(merged["date"])
-        # Dedup por (fecha, local, visitante): el resultado manual pisa al auto
-        merged = (merged.sort_values("date")
-                  .drop_duplicates(subset=["date", "home_team", "away_team"], keep="last")
-                  .reset_index(drop=True))
+        merged = merged.sort_values("date")
+        # El histórico se deduplica por (fecha, local, visitante). Pero los
+        # partidos del WC26 llegan por dos vías —martj42 (fecha local) y
+        # the-odds-api (fecha UTC, suele caer +1 día)— y a veces con la localía
+        # invertida, así que un dedup por fecha los cuenta DOS veces e infla el
+        # modelo. En el Mundial cada cruce se juega una sola vez y en sede
+        # neutral, así que ahí deduplicamos por par de equipos (sin fecha ni
+        # orden). keep="last" hace que el manual (fecha posterior) pise al auto.
+        is_wc = merged["date"] >= pd.Timestamp("2026-06-01")
+        hist = merged[~is_wc].drop_duplicates(
+            subset=["date", "home_team", "away_team"], keep="last")
+        wc = merged[is_wc].copy()
+        wc["_pair"] = [frozenset((h, a)) for h, a in
+                       zip(wc["home_team"], wc["away_team"])]
+        wc = wc.drop_duplicates(subset=["_pair"], keep="last").drop(columns="_pair")
+        merged = (pd.concat([hist, wc], ignore_index=True)
+                  .sort_values("date").reset_index(drop=True))
+        # Re-derivar peso/flags sobre el dataset ya deduplicado
+        merged = enrich_matches(merged)
         merged.to_parquet(PROCESSED_DIR / "matches.parquet", index=False)
         df = merged
 

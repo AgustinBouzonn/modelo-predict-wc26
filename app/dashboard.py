@@ -9,6 +9,7 @@ Pestañas:
 """
 from __future__ import annotations
 
+import datetime as dt
 import sys
 from pathlib import Path
 
@@ -21,7 +22,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.config import load_config, all_teams, canonical, MODELS_DIR, PROCESSED_DIR  # noqa: E402
+from src.config import load_config, all_teams, canonical, MODELS_DIR, PROCESSED_DIR, RAW_DIR  # noqa: E402
 from src.models.ensemble import EnsemblePredictor  # noqa: E402
 from src.data.sources import load_fixture, load_standings, head_to_head  # noqa: E402
 from src.data.squads import load_squads, load_coaches  # noqa: E402
@@ -88,6 +89,9 @@ h3 {letter-spacing:-.3px;}
 .pbar .h {background:#2563eb;} .pbar .d {background:#64748b;} .pbar .a {background:#dc2626;}
 .pct {font-size:.72rem; color:#94a3b8; display:flex; justify-content:space-between;}
 .xg {font-size:.7rem; color:#64748b; text-align:center;}
+.ko {font-size:.66rem; color:#93c5fd; margin-top:3px;}
+.ko .tz {color:#64748b; font-weight:700; font-size:.58rem; letter-spacing:.3px;}
+.tie .ko {text-align:center; padding:2px 0 4px; background:#0c1422;}
 .daterow {font-size:.78rem; font-weight:700; color:#4ade80; margin:16px 0 4px;
         text-transform:uppercase; letter-spacing:.6px;}
 
@@ -175,9 +179,9 @@ def get_coaches():
 
 
 @st.cache_data(show_spinner=False)
-def predict_cached(home, away, neutral=True):
+def predict_cached(home, away, neutral=True, knockout=False):
     """Predicción memoizada por (home, away): el ensemble es inmutable entre reruns."""
-    return get_ensemble().predict(home, away, neutral=neutral)
+    return get_ensemble().predict(home, away, neutral=neutral, knockout=knockout)
 
 
 @st.cache_data(show_spinner=False)
@@ -197,10 +201,57 @@ def market_probs_map():
     return out
 
 
-def predict_mode(home, away, mode="🤖 Modelo", w=0.5):
+ARG_TZ = dt.timezone(dt.timedelta(hours=-3))   # Argentina (sin horario de verano)
+_DIA_ABBR = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
+
+
+@st.cache_data(show_spinner=False)
+def kickoff_map():
+    """{frozenset(local, visitante): Timestamp en hora de Argentina} desde
+    data/raw/wc26_kickoffs.csv (commence_time de the-odds-api, UTC → UTC-3)."""
+    path = RAW_DIR / "wc26_kickoffs.csv"
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path)
+    out = {}
+    for r in df.itertuples(index=False):
+        try:
+            t = pd.to_datetime(r.kickoff_utc, utc=True).tz_convert(ARG_TZ)
+            key = frozenset((canonical(r.home_team, get_config()),
+                             canonical(r.away_team, get_config())))
+            out[key] = t
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+def kickoff_for(home, away):
+    return kickoff_map().get(frozenset((home, away)))
+
+
+def fmt_kickoff(home, away, with_date=True):
+    """Horario del partido en hora de Argentina. '' si no se conoce."""
+    t = kickoff_for(home, away)
+    if t is None:
+        return ""
+    hhmm = f"{t.hour:02d}:{t.minute:02d}"
+    if with_date:
+        return f"{_DIA_ABBR[t.weekday()]} {t.day:02d}/{t.month:02d} · {hhmm} h"
+    return f"{hhmm} h"
+
+
+def fmt_top_scores(pred, n=3):
+    """Los marcadores exactos más probables: '1-0 18% · 2-0 17% · 2-1 8%'."""
+    ts = pred.get("top_scores") or []
+    if not ts:
+        return f"prob {pred['likely_score']}"
+    return " · ".join(f"{s} {p*100:.0f}%" for s, p in ts[:n])
+
+
+def predict_mode(home, away, mode="🤖 Modelo", w=0.5, knockout=False):
     """Predicción según la fuente elegida. El mercado solo cubre partidos con cuota;
     sin cuota cae al modelo. Devuelve (dict_pred, tiene_mercado)."""
-    base = dict(predict_cached(home, away))
+    base = dict(predict_cached(home, away, knockout=knockout))
     mk = market_probs_map().get((home, away))
     if mode.endswith("Modelo") or mk is None:
         return base, (mk is not None)
@@ -417,10 +468,12 @@ def _theme_fig(fig, h=None):
 
 def _match_html(row, pred):
     grp = "" if row.group == "—" else row.group
+    ko = fmt_kickoff(row.home, row.away, with_date=False)
+    ko_html = f'<div class="ko">🕐 {ko} <span class="tz">ARG</span></div>' if ko else ""
     if row.played:
         hs, as_ = int(row.home_score), int(row.away_score)
         cls = "win-h" if hs > as_ else ("win-a" if as_ > hs else "")
-        mid = f'<span class="score {cls}">{hs} - {as_}</span>'
+        mid = f'<span class="score {cls}">{hs} - {as_}</span>{ko_html}'
     else:
         ph, pd_, pa = pred["p_home"], pred["p_draw"], pred["p_away"]
         mid = (f'<div class="pbar"><div class="h" style="width:{ph*100:.0f}%"></div>'
@@ -428,7 +481,8 @@ def _match_html(row, pred):
                f'<div class="a" style="width:{pa*100:.0f}%"></div></div>'
                f'<div class="pct"><span>{ph*100:.0f}%</span><span>{pd_*100:.0f}%</span>'
                f'<span>{pa*100:.0f}%</span></div>'
-               f'<div class="xg">xG {pred["xg_home"]}–{pred["xg_away"]} · prob {pred["likely_score"]}</div>')
+               f'<div class="xg">xG {pred["xg_home"]}–{pred["xg_away"]} · {fmt_top_scores(pred)}</div>'
+               f'{ko_html}')
     return (f'<div class="match"><span class="grp">{grp}</span>'
             f'<span class="home">{row.home} {flag_img(row.home, 22)}</span>'
             f'<span class="mid">{mid}</span>'
@@ -451,15 +505,17 @@ with tab_fix:
         # Exportar fixture + predicciones a CSV
         exp = []
         for r in fx.itertuples(index=False):
-            row = {"fecha": r.date.date().isoformat(), "grupo": r.group,
+            row = {"fecha": r.date.date().isoformat(),
+                   "horario_arg": fmt_kickoff(r.home, r.away), "grupo": r.group,
                    "local": r.home, "visitante": r.away}
             if r.played:
                 row["resultado"] = f"{int(r.home_score)}-{int(r.away_score)}"
             else:
-                p = predict_cached(r.home, r.away)
+                p = predict_cached(r.home, r.away, knockout=(r.group == "—"))
                 row.update(p_local=round(p["p_home"], 3), empate=round(p["p_draw"], 3),
                            p_visitante=round(p["p_away"], 3),
-                           xg=f"{p['xg_home']}-{p['xg_away']}", marcador_prob=p["likely_score"])
+                           xg=f"{p['xg_home']}-{p['xg_away']}", marcador_prob=p["likely_score"],
+                           marcadores_top=fmt_top_scores(p))
             exp.append(row)
         st.download_button("⬇️ Descargar fixture + predicciones (CSV)",
                            pd.DataFrame(exp).to_csv(index=False).encode("utf-8"),
@@ -478,7 +534,7 @@ with tab_fix:
         elif view == "Solo jugados":
             data = data[data["played"]]
 
-        preds = {i: predict_mode(r.home, r.away, MODE, BLEND_W)[0]
+        preds = {i: predict_mode(r.home, r.away, MODE, BLEND_W, knockout=(r.group == "—"))[0]
                  for i, r in data[~data["played"]].iterrows()}
         st.markdown(f'<div class="pct" style="max-width:760px;margin:6px 0 0">'
                     f'<span>Fuente: <b>{MODE}</b></span>'
@@ -564,9 +620,11 @@ with tab_brkt:
         pb = f'<span class="pl">{int(m["pb"]*100)}%</span>' if not mini else ""
         la = f'<span class="pl">{m["la"]}</span>' if m.get("la") else ""
         lb = f'<span class="pl">{m["lb"]}</span>' if m.get("lb") else ""
+        ko = fmt_kickoff(m["a"], m["b"], with_date=True)
+        ko_html = f'<div class="ko">🕐 {ko} <span class="tz">ARG</span></div>' if (ko and not mini) else ""
         return (f'<div class="tie">'
                 f'<div class="t {wa}">{flag_img(m["a"], 16)} {m["a"]} {la}{pa}</div>'
-                f'<div class="t {wb}">{flag_img(m["b"], 16)} {m["b"]} {lb}{pb}</div></div>')
+                f'<div class="t {wb}">{flag_img(m["b"], 16)} {m["b"]} {lb}{pb}</div>{ko_html}</div>')
 
     cols_lbl = ["16avos", "8vos", "4tos", "Semis"]
 
@@ -664,7 +722,7 @@ with tab_teams:
             st.markdown("**Próximos partidos**")
             for r in nexts.itertuples(index=False):
                 rival = r.away if r.home == sel else r.home
-                p = predict_cached(r.home, r.away)
+                p = predict_cached(r.home, r.away, knockout=(r.group == "—"))
                 mine = p["p_home"] if r.home == sel else p["p_away"]
                 st.write(f"🆚 **{rival}** · {_fmt_date(r.date)} — gana {sel}: **{mine*100:.0f}%**")
 
@@ -718,7 +776,8 @@ with tab_match:
     pend = fx[~fx["played"]] if not fx.empty else pd.DataFrame()
     preset = {"— elegir manualmente —": (None, None)}
     for r in pend.head(40).itertuples(index=False):
-        preset[f"{r.home} vs {r.away} · {_fmt_date(r.date)}"] = (r.home, r.away)
+        ko = fmt_kickoff(r.home, r.away)
+        preset[f"{r.home} vs {r.away} · {ko or _fmt_date(r.date)}"] = (r.home, r.away)
     chosen_match = st.selectbox("Cargar un partido del fixture", list(preset))
     pre_h, pre_a = preset[chosen_match]
 
@@ -736,6 +795,9 @@ with tab_match:
             rr = jugado.iloc[0]
             st.success(f"⚽ Ya jugado: **{home} {int(rr.home_score)}–{int(rr.away_score)} {away}** "
                        f"· armá las alineaciones y compará con lo que el modelo esperaba.")
+        ko_full = fmt_kickoff(home, away)
+        if ko_full:
+            st.caption(f"🕐 Horario: **{ko_full}** (hora de Argentina)")
         fh = c1.selectbox("Formación local", list(FORMATIONS), key="fh")
         fa = c2.selectbox("Formación visitante", list(FORMATIONS), key="fa")
         pool_h, pool_a = get_rated(home), get_rated(away)
@@ -753,8 +815,11 @@ with tab_match:
         base_h = get_baseline(home, fh)
         base_a = get_baseline(away, fa)
 
-        base_pred = ens.predict(home, away, neutral=True)
-        pred = ens.predict_with_lineups(home, away, str_h, str_a, base_h, base_a, neutral=True)
+        mrow = fx[(fx["home"] == home) & (fx["away"] == away)] if not fx.empty else pd.DataFrame()
+        ko_flag = bool(len(mrow)) and mrow.iloc[0]["group"] == "—"
+        base_pred = ens.predict(home, away, neutral=True, knockout=ko_flag)
+        pred = ens.predict_with_lineups(home, away, str_h, str_a, base_h, base_a,
+                                        neutral=True, knockout=ko_flag)
 
         pcol, fcol = st.columns([3, 4])
         with pcol:
@@ -773,7 +838,7 @@ with tab_match:
             bar.update_layout(height=180, margin=dict(l=8, r=8, t=8, b=8),
                               xaxis_tickformat=".0%", showlegend=False)
             st.plotly_chart(bar, width="stretch")
-            st.caption(f"xG {pred['xg_home']}–{pred['xg_away']} · marcador probable {pred['likely_score']} "
+            st.caption(f"xG {pred['xg_home']}–{pred['xg_away']} · marcadores probables: {fmt_top_scores(pred)} "
                        f"· ajuste por alineación {pred.get('lineup_shift',0):+.2f}")
         with fcol:
             st.markdown(
@@ -788,14 +853,14 @@ with tab_match:
         if mk is None:
             st.caption("Este partido no tiene cuota de mercado (no es un próximo partido con "
                        "cuotas). Solo se muestra el modelo.")
-            mdl = predict_cached(home, away)
+            mdl = predict_cached(home, away, knockout=ko_flag)
             st.dataframe(pd.DataFrame([{"Fuente": "🤖 Modelo", home: mdl["p_home"],
                                         "Empate": mdl["p_draw"], away: mdl["p_away"]}])
                          .style.format({home: "{:.0%}", "Empate": "{:.0%}", away: "{:.0%}"}),
                          width="stretch", hide_index=True)
         else:
-            mdl = predict_cached(home, away)
-            bl, _ = predict_mode(home, away, "🔀 Blend", BLEND_W)
+            mdl = predict_cached(home, away, knockout=ko_flag)
+            bl, _ = predict_mode(home, away, "🔀 Blend", BLEND_W, knockout=ko_flag)
             rows = [{"Fuente": "🤖 Modelo", home: mdl["p_home"], "Empate": mdl["p_draw"], away: mdl["p_away"]},
                     {"Fuente": f"🔀 Blend ({BLEND_W:.0%}/{1-BLEND_W:.0%})", home: bl["p_home"],
                      "Empate": bl["p_draw"], away: bl["p_away"]},

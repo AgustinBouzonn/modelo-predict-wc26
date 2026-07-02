@@ -51,10 +51,10 @@ class TournamentSimulator:
         return canonical(team, self.cfg)
 
     # ------------------------------------------------------------------ #
-    def _probs(self, a: str, b: str) -> dict:
-        key = (a, b)
+    def _probs(self, a: str, b: str, knockout: bool = False) -> dict:
+        key = (a, b, knockout)
         if key not in self._prob_cache:
-            out = dict(self.ens.predict(a, b, neutral=True))
+            out = dict(self.ens.predict(a, b, neutral=True, knockout=knockout))
             mk = self.market.get((a, b))
             if mk and self.mode != "modelo":
                 ph, pd_, pa = mk
@@ -114,7 +114,7 @@ class TournamentSimulator:
         return int(gh), int(ga), res
 
     def _knockout_winner(self, a: str, b: str) -> str:
-        p = self._probs(a, b)
+        p = self._probs(a, b, knockout=True)
         ph, pd_, pa = p["p_home"], p["p_draw"], p["p_away"]
         if self.knockout_temp != 1.0:
             arr = np.array([ph, pd_, pa]) ** (1.0 / self.knockout_temp)
@@ -235,7 +235,7 @@ class TournamentSimulator:
             nxt, matches = [], []
             for i in range(0, len(alive) - 1, 2):
                 a, b = alive[i], alive[i + 1]
-                p = self._probs(a, b)
+                p = self._probs(a, b, knockout=True)
                 pa, pb = p["p_home"], p["p_away"]
                 w = a if pa >= pb else b
                 matches.append({"a": a, "b": b, "winner": w,
@@ -331,7 +331,7 @@ class TournamentSimulator:
                 if a == "—" or b == "—":
                     w, pa, pb = (a if b == "—" else b), 0.5, 0.5
                 else:
-                    p = self._probs(a, b)
+                    p = self._probs(a, b, knockout=True)
                     pa, pb = p["p_home"], p["p_away"]
                     w = a if pa >= pb else b
                 out.append({**m, "winner": w, "pa": round(pa, 2), "pb": round(pb, 2)})
@@ -358,7 +358,7 @@ class TournamentSimulator:
             champ = fin_a if fin_b == "—" else fin_b
             pa = pb = 0.5
         else:
-            p = self._probs(fin_a, fin_b)
+            p = self._probs(fin_a, fin_b, knockout=True)
             pa, pb = p["p_home"], p["p_away"]
             champ = fin_a if pa >= pb else fin_b
         final = {"a": fin_a, "b": fin_b, "winner": champ,

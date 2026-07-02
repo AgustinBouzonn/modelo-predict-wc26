@@ -302,6 +302,197 @@ def backtest_holdout(matches: pd.DataFrame, months: int = 12,
     return m
 
 
+# =========================================================================== #
+# TUNING con validación temporal rolling-origin (multi-fold, sin fuga)
+# =========================================================================== #
+FOLD_CUTOFFS = [f"{y}-01-01" for y in range(2019, 2026)]   # 7 cortes anuales
+HORIZON_DAYS = 365
+
+
+def _load_clean() -> pd.DataFrame:
+    """Como _load(), pero re-derivando match_weight SIN el boost del torneo en
+    curso (para que la config de producción no contamine el backtest) y con el
+    flag is_knockout recalculado."""
+    from ..data.sources import tournament_weight
+    df = _load().copy()
+    df["match_weight"] = df["tournament"].map(tournament_weight).fillna(1.0)
+    is_wc = (df["tournament"].str.contains("FIFA World Cup", na=False)
+             & ~df["tournament"].str.contains("qualification", case=False, na=False))
+    df["is_knockout"] = False
+    for year, g in df[is_wc].groupby(df["date"].dt.year):
+        if year == 2026:
+            df.loc[g.index[g["date"] >= pd.Timestamp("2026-06-29")], "is_knockout"] = True
+        elif len(g) >= 48:
+            df.loc[g.sort_values("date").index[-16:], "is_knockout"] = True
+    df["_is_wc"] = is_wc
+    return df.sort_values("date").reset_index(drop=True)
+
+
+def _folds(df: pd.DataFrame):
+    for cut in FOLD_CUTOFFS:
+        t0 = pd.Timestamp(cut)
+        t1 = t0 + pd.Timedelta(days=HORIZON_DAYS)
+        train = df[df["date"] < t0]
+        test = df[(df["date"] >= t0) & (df["date"] < t1)]
+        test = test[test["match_weight"] >= 2.0]   # competitivos: señal más limpia
+        if len(train) > 1000 and len(test) > 100:
+            yield cut, train, test
+
+
+def _poisson_P(model: DixonColesModel, test: pd.DataFrame, knockout: bool = False) -> np.ndarray:
+    out = []
+    for h, a, neu in test[["home_team", "away_team", "neutral"]].itertuples(index=False, name=None):
+        p = model.probabilities(h, a, neutral=bool(neu), knockout=knockout)
+        out.append([p["H"], p["D"], p["A"]])
+    return np.asarray(out)
+
+
+def _elo_P(model: EloModel, test: pd.DataFrame) -> np.ndarray:
+    out = []
+    for h, a, neu in test[["home_team", "away_team", "neutral"]].itertuples(index=False, name=None):
+        p = model.probabilities(h, a, neutral=bool(neu))
+        out.append([p["H"], p["D"], p["A"]])
+    return np.asarray(out)
+
+
+def _yi(test: pd.DataFrame) -> np.ndarray:
+    hs, as_ = test["home_score"].to_numpy(int), test["away_score"].to_numpy(int)
+    return np.where(hs > as_, 0, np.where(hs < as_, 2, 1))
+
+
+def _ll(P: np.ndarray, y: np.ndarray) -> float:
+    P = np.clip(P, 1e-9, 1.0); P = P / P.sum(1, keepdims=True)
+    return float(-np.log(P[np.arange(len(y)), y]).mean())
+
+
+def _rps_arr(P: np.ndarray, y: np.ndarray) -> float:
+    P = np.clip(P, 1e-9, 1.0); P = P / P.sum(1, keepdims=True)
+    oh = np.eye(3)[y]
+    return float(((np.cumsum(P, 1) - np.cumsum(oh, 1)) ** 2).sum(1).mean() / 2)
+
+
+def grid_poisson(df: pd.DataFrame,
+                 half_lives=(365.0, 550.0, 730.0, 1100.0),
+                 alphas=(3e-4, 1e-3, 3e-3)) -> pd.DataFrame:
+    """Grid half_life x alpha del Poisson en folds rolling (log-loss pooled)."""
+    import itertools
+    rows = []
+    for hl, al in itertools.product(half_lives, alphas):
+        Ps, ys = [], []
+        for cut, train, test in _folds(df):
+            m = DixonColesModel(half_life_days=hl, alpha=al).fit(train)
+            Ps.append(_poisson_P(m, test)); ys.append(_yi(test))
+        P, y = np.vstack(Ps), np.concatenate(ys)
+        rows.append({"half_life": hl, "alpha": al, "n": len(y),
+                     "logloss": _ll(P, y), "rps": _rps_arr(P, y)})
+        print(f"  half_life={hl:6.0f} alpha={al:.0e} -> "
+              f"logloss {rows[-1]['logloss']:.4f} rps {rows[-1]['rps']:.4f}")
+    return pd.DataFrame(rows).sort_values("logloss").reset_index(drop=True)
+
+
+def eval_boost(df: pd.DataFrame, boosts=(1.0, 2.0, 3.0, 5.0, 8.0),
+               half_life: float = 730.0, alpha: float = 1e-3,
+               w_elo: float = 0.5) -> pd.DataFrame:
+    """Boost del 'torneo en curso' evaluado donde importa: para cada Mundial
+    pasado entrena hasta el inicio de sus knockouts (con la fase de grupos de
+    ESA edición sobre-ponderada por `boost`) y evalúa el ensemble elo+poisson
+    sobre sus 16 eliminatorias."""
+    editions = sorted({d.year for d in df.loc[df["is_knockout"], "date"]})
+    editions = [y for y in editions if y < 2026]
+    rows = []
+    for boost in boosts:
+        Ps, ys = [], []
+        for year in editions:
+            ko = df[df["is_knockout"] & (df["date"].dt.year == year)]
+            cutoff = ko["date"].min()
+            train = df[df["date"] < cutoff].copy()
+            cur = train["_is_wc"] & (train["date"].dt.year == year)
+            train.loc[cur, "match_weight"] *= boost
+            po = DixonColesModel(half_life_days=half_life, alpha=alpha).fit(train)
+            el = EloModel().fit(train)
+            P = w_elo * _elo_P(el, ko) + (1 - w_elo) * _poisson_P(po, ko, knockout=True)
+            Ps.append(P); ys.append(_yi(ko))
+        P, y = np.vstack(Ps), np.concatenate(ys)
+        rows.append({"boost": boost, "n": len(y), "logloss": _ll(P, y),
+                     "rps": _rps_arr(P, y)})
+        print(f"  boost x{boost:<4} -> logloss {rows[-1]['logloss']:.4f} "
+              f"rps {rows[-1]['rps']:.4f}  (n={len(y)})")
+    return pd.DataFrame(rows).sort_values("logloss").reset_index(drop=True)
+
+
+def tune_weights_cv(df: pd.DataFrame, half_life: float = 730.0,
+                    alpha: float = 1e-3, use_ml: bool = True) -> dict:
+    """Pesos elo/poisson/ml + temperatura minimizando log-loss pooled en los
+    folds rolling. Más robusto que un holdout único."""
+    parts_e, parts_p, parts_m, ys = [], [], [], []
+    for cut, train, test in _folds(df):
+        po = DixonColesModel(half_life_days=half_life, alpha=alpha).fit(train)
+        el = EloModel().fit(train)
+        el.apply_confederation_correction(train, beta=0.5)   # como en producción
+        parts_e.append(_elo_P(el, test)); parts_p.append(_poisson_P(po, test))
+        ys.append(_yi(test))
+        if use_ml:
+            try:
+                ml = MLModel(device="cpu").fit(train)
+                out = []
+                for h, a, neu in test[["home_team", "away_team", "neutral"]].itertuples(index=False, name=None):
+                    p = ml.probabilities(h, a, elo=el, neutral=bool(neu))
+                    out.append([p["H"], p["D"], p["A"]])
+                parts_m.append(np.asarray(out))
+            except Exception as e:  # noqa: BLE001
+                print(f"  [aviso] ML no disponible en fold {cut}: {type(e).__name__}")
+                use_ml, parts_m = False, []
+        print(f"  fold {cut}: {len(ys[-1])} partidos")
+
+    Pe, Pp, y = np.vstack(parts_e), np.vstack(parts_p), np.concatenate(ys)
+    Pm = np.vstack(parts_m) if (use_ml and parts_m) else None
+
+    best = {"logloss": np.inf}
+    ml_grid = (0.0, 0.05, 0.10, 0.15, 0.20) if Pm is not None else (0.0,)
+    for wm in ml_grid:
+        for we in np.arange(0.0, 1.0001 - wm, 0.05):
+            wp = 1.0 - wm - we
+            P = we * Pe + wp * Pp + (wm * Pm if Pm is not None else 0.0)
+            cur = _ll(P, y)
+            if cur < best["logloss"]:
+                best = {"elo": round(float(we), 2), "poisson": round(float(wp), 2),
+                        "ml": round(float(wm), 2), "logloss": cur}
+
+    # Temperatura sobre la mezcla ganadora
+    P = (best["elo"] * Pe + best["poisson"] * Pp
+         + (best["ml"] * Pm if Pm is not None else 0.0))
+    best_t, best_ll = 1.0, _ll(P, y)
+    for t in np.arange(0.70, 1.41, 0.05):
+        Pt = np.clip(P, 1e-9, 1.0) ** (1.0 / t)
+        Pt = Pt / Pt.sum(1, keepdims=True)
+        cur = _ll(Pt, y)
+        if cur < best_ll:
+            best_t, best_ll = float(t), cur
+    best["temperature"] = round(best_t, 2)
+    best["logloss_calibrado"] = round(best_ll, 4)
+    best["n"] = len(y)
+    return best
+
+
+def dispersion(df: pd.DataFrame, half_life: float = 730.0, alpha: float = 1e-3) -> dict:
+    """Índice de dispersión de Pearson out-of-sample: mean((y-lambda)^2/lambda).
+    ~1.0 = varianza compatible con Poisson; >>1 = sobredispersión."""
+    ratios, n = [], 0
+    for cut, train, test in _folds(df):
+        m = DixonColesModel(half_life_days=half_life, alpha=alpha).fit(train)
+        for h, a, hs, as_, neu in test[["home_team", "away_team", "home_score",
+                                        "away_score", "neutral"]].itertuples(index=False, name=None):
+            lh, la = m.expected_goals(h, a, neutral=bool(neu))
+            ratios.append((hs - lh) ** 2 / max(lh, 1e-6))
+            ratios.append((as_ - la) ** 2 / max(la, 1e-6))
+        n += len(test)
+    idx = float(np.mean(ratios))
+    return {"dispersion_index": round(idx, 3), "n_partidos": n,
+            "veredicto": ("OK: compatible con Poisson" if idx < 1.15 else
+                          "Sobredispersión moderada" if idx < 1.35 else
+                          "Sobredispersión fuerte: considerar binomial negativa")}
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Backtest del predictor WC26")
     ap.add_argument("--no-holdout", action="store_true", help="Saltear el holdout temporal")
@@ -309,10 +500,44 @@ if __name__ == "__main__":
     ap.add_argument("--compare-conf", action="store_true",
                     help="Comparar con vs sin corrección por confederación")
     ap.add_argument("--optimize-weights", action="store_true",
-                    help="Buscar los pesos óptimos del ensemble")
+                    help="Buscar los pesos óptimos del ensemble (holdout único)")
     ap.add_argument("--write", action="store_true",
                     help="Escribir los pesos óptimos al config")
+    ap.add_argument("--grid", action="store_true",
+                    help="Grid half_life x alpha del Poisson (folds rolling)")
+    ap.add_argument("--boost", action="store_true",
+                    help="Evaluar el boost del torneo en curso (knockouts WCs pasados)")
+    ap.add_argument("--tune-weights", action="store_true",
+                    help="Pesos del ensemble + temperatura (folds rolling)")
+    ap.add_argument("--dispersion", action="store_true",
+                    help="Diagnóstico de sobredispersión del Poisson")
+    ap.add_argument("--half-life", type=float, default=730.0)
+    ap.add_argument("--alpha", type=float, default=1e-3)
     args = ap.parse_args()
+
+    if args.grid or args.boost or args.tune_weights or args.dispersion:
+        dfc = _load_clean()
+        print(f"Datos: {len(dfc):,} partidos hasta {dfc['date'].max().date()}\n")
+        if args.grid:
+            print("=== Grid Poisson: half_life x alpha (rolling, pooled) ===")
+            res = grid_poisson(dfc)
+            print("\nMejores 5:")
+            print(res.head(5).to_string(index=False))
+            args.half_life = float(res.iloc[0]["half_life"])
+            args.alpha = float(res.iloc[0]["alpha"])
+            print(f"\n>> Ganador: half_life={args.half_life:.0f} alpha={args.alpha:.0e}\n")
+        if args.boost:
+            print("=== Boost del torneo en curso (knockouts de WCs pasados) ===")
+            res = eval_boost(dfc, half_life=args.half_life, alpha=args.alpha)
+            print(f"\n>> Ganador: boost x{res.iloc[0]['boost']}\n")
+        if args.tune_weights:
+            print("=== Pesos del ensemble + temperatura (rolling) ===")
+            best = tune_weights_cv(dfc, half_life=args.half_life, alpha=args.alpha)
+            print(f"\n>> Ganador: {best}\n")
+        if args.dispersion:
+            print("=== Sobredispersión ===")
+            print(dispersion(dfc, half_life=args.half_life, alpha=args.alpha))
+        raise SystemExit(0)
 
     matches = _load()
     print(f"Datos: {len(matches):,} partidos hasta {matches['date'].max().date()}")

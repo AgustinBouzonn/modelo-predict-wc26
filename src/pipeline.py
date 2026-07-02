@@ -34,8 +34,9 @@ def train_all(fetch: bool = True, fetch_news: bool = True, n_sims: int = 0) -> E
     if fetch:
         # Auto-traer resultados en vivo (the-odds-api /scores) antes de procesar
         try:
-            from .data.live_results import update_manual
+            from .data.live_results import update_manual, update_kickoffs
             update_manual()
+            update_kickoffs()
         except Exception as e:  # noqa: BLE001
             print(f"[aviso] resultados live no disponibles: {type(e).__name__}")
     matches = load_matches(fetch=fetch)
@@ -53,8 +54,13 @@ def train_all(fetch: bool = True, fetch_news: bool = True, n_sims: int = 0) -> E
             print(f"    {c:<9} {v:+.0f}")
 
     print("• Poisson (Dixon-Coles) ...")
-    poisson = DixonColesModel().fit(matches)
+    poisson = DixonColesModel(
+        half_life_days=float(cfg.get("poisson_half_life_days", 730.0)),
+        alpha=float(cfg.get("poisson_alpha", 1e-3)),
+    ).fit(matches)
     poisson.save()
+    print(f"  half-life={poisson.half_life_days:.0f}d alpha={poisson.alpha} "
+          f"rho={poisson.rho:+.3f} knockout_factor={poisson.knockout_factor:.3f}")
 
     print("• ML (XGBoost) ...")
     ml = MLModel(device=cfg.get("ml_device", "auto")).fit(matches, conf_offset=offset)
@@ -75,7 +81,8 @@ def train_all(fetch: bool = True, fetch_news: bool = True, n_sims: int = 0) -> E
     hosts = [canonical(h, cfg) for h in cfg.get("tournament", {}).get("hosts", [])]
     ens = EnsemblePredictor(elo=elo, poisson=poisson, ml=ml,
                             weights=weights, sentiment=sentiment,
-                            hosts=hosts, host_tilt=float(cfg.get("host_advantage_tilt", 0.0)))
+                            hosts=hosts, host_tilt=float(cfg.get("host_advantage_tilt", 0.0)),
+                            temperature=float(cfg.get("ensemble_temperature", 1.0)))
     ens.save()
     print("\n✓ Ensemble entrenado y guardado en models/ensemble.joblib")
 

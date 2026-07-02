@@ -78,8 +78,15 @@ def fetch_odds_api(api_key: str, sport: str = "soccer_fifa_world_cup",
                          "odds_home": np.mean(oh), "odds_draw": np.mean(od), "odds_away": np.mean(oa)})
     df = pd.DataFrame(rows)
     if not df.empty:
+        # Acumular: las cuotas llegan por ronda (grupos, 8vos, 4tos…). Guardamos
+        # todas y, ante el mismo cruce, nos quedamos con la lectura más reciente.
+        if ODDS_CSV.exists():
+            prev = pd.read_csv(ODDS_CSV, comment="#").dropna(subset=["home_team", "away_team"])
+            df = pd.concat([prev, df], ignore_index=True)
+        df["_pair"] = [frozenset((h, a)) for h, a in zip(df["home_team"], df["away_team"])]
+        df = df.drop_duplicates(subset=["_pair"], keep="last").drop(columns="_pair")
         df.to_csv(ODDS_CSV, index=False)
-        print(f"{len(df)} partidos con cuotas -> {ODDS_CSV}")
+        print(f"{len(rows)} cuotas nuevas; {len(df)} acumuladas -> {ODDS_CSV}")
     else:
         print("[aviso] the-odds-api no devolvió cuotas (¿torneo sin mercado activo?).")
     return df
@@ -185,7 +192,27 @@ def benchmark(ens: EnsemblePredictor | None = None) -> dict | None:
         "mercado": {"logloss": _logloss(Pmkt, yi), "rps": _rps(Pmkt, yi),
                     "acc": float((Pmkt.argmax(1) == yi).mean())},
     }
+    _log_history(res)
     return res
+
+
+def _log_history(res: dict) -> None:
+    """Acumula cada corrida del benchmark en un CSV para seguir la evolución
+    modelo-vs-mercado a medida que avanza el torneo."""
+    import datetime as _dt
+    path = PROCESSED_DIR / "benchmark_history.csv"
+    row = pd.DataFrame([{
+        "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+        "n": res["n"],
+        "modelo_logloss": round(res["modelo"]["logloss"], 4),
+        "modelo_rps": round(res["modelo"]["rps"], 4),
+        "modelo_acc": round(res["modelo"]["acc"], 4),
+        "mercado_logloss": round(res["mercado"]["logloss"], 4),
+        "mercado_rps": round(res["mercado"]["rps"], 4),
+        "mercado_acc": round(res["mercado"]["acc"], 4),
+    }])
+    header = not path.exists()
+    row.to_csv(path, mode="a", header=header, index=False)
 
 
 if __name__ == "__main__":

@@ -84,11 +84,22 @@ groups:
   - England
   - Ghana
   - Panama
+# Pesos y calibración tuneados por backtest rolling 2019-2025: en el pool
+# general (5.233 partidos) gana elo 0.10; restringido a torneos mayores
+# (2.738 partidos, el dominio del Mundial) gana elo 0.15 y el Elo-pesado
+# empeora fuerte. El ML no aporta en ninguno. Temperatura <1 = subconfiado.
 ensemble_weights:
-  elo: 0.5
-  poisson: 0.5
+  elo: 0.15
+  poisson: 0.85
   ml: 0.0
 elo_confederation_beta: 0.5
 knockout_temperature: 1.2
 host_advantage_tilt: 0.25
 ml_device: auto
+# Hiperparámetros del Poisson (grid con validación temporal; meseta 1100-1500)
+poisson_half_life_days: 1500
+poisson_alpha: 0.0003
+ensemble_temperature: 0.95
+# Boost del torneo en curso: evaluado en knockouts de WCs 2002-2022 y EMPEORA
+# (x1 0.962 -> x8 1.112 de log-loss). Se deja desactivado a propósito.
+current_tournament_boost: 1.0
