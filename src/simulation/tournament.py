@@ -130,12 +130,57 @@ class TournamentSimulator:
         return a if self.rng.random() < pen_home else b
 
     # ------------------------------------------------------------------ #
+    def _fixture_state(self) -> dict:
+        """Resultados REALES cacheados para condicionar la simulación:
+        group_scores {par: (local, gl, gv)} de grupos jugados y ko_winners
+        (eliminatorias, incl. penales). Vacío sin datos locales (tests/CI)."""
+        if getattr(self, "_fx_state", None) is None:
+            st = {"group_scores": {}, "ko_winners": {}}
+            try:
+                if (RAW_DIR / "international_results.csv").exists():
+                    from ..data.sources import load_fixture
+                    fx = load_fixture()
+                    if not fx.empty:
+                        gp = fx[(fx["group"] != "—") & fx["played"]]
+                        for r in gp.itertuples(index=False):
+                            st["group_scores"][frozenset((r.home, r.away))] = (
+                                r.home, int(r.home_score), int(r.away_score))
+                        st["ko_winners"] = self._real_ko_winners()
+            except Exception:  # noqa: BLE001
+                pass
+            self._fx_state = st
+        return self._fx_state
+
+    def _real_bracket_skeleton(self) -> list[tuple[str, str]] | None:
+        """Los 16 cruces de 16avos en el orden del cuadro OFICIAL (con los
+        emparejamientos reales), para condicionar la simulación. None si aún
+        no se resuelven todos (grupos incompletos, tests con config sintética)."""
+        if not hasattr(self, "_r32_skel"):
+            skel = None
+            try:
+                b = self.official_bracket()
+                ms = b["left"][0] + b["right"][0]
+                cand = [(m["a"], m["b"]) for m in ms]
+                teams = {t for g in self.groups.values() for t in g}
+                if len(cand) == 16 and all(x in teams and y in teams for x, y in cand):
+                    skel = cand
+            except Exception:  # noqa: BLE001
+                skel = None
+            self._r32_skel = skel
+        return self._r32_skel
+
     def _simulate_group(self, teams: list[str]) -> pd.DataFrame:
+        real = self._fixture_state()["group_scores"]
         stats = {t: {"pts": 0, "gf": 0, "ga": 0} for t in teams}
         for i in range(len(teams)):
             for j in range(i + 1, len(teams)):
                 a, b = teams[i], teams[j]
-                gh, ga, _ = self._sample_match(a, b)
+                got = real.get(frozenset((a, b)))
+                if got is not None:                     # partido ya jugado
+                    home, hs, as_ = got
+                    gh, ga = (hs, as_) if home == a else (as_, hs)
+                else:
+                    gh, ga, _ = self._sample_match(a, b)
                 stats[a]["gf"] += gh; stats[a]["ga"] += ga
                 stats[b]["gf"] += ga; stats[b]["ga"] += gh
                 if gh > ga:
@@ -171,32 +216,41 @@ class TournamentSimulator:
         return [seeded[p - 1] for p in self._seed_positions(n)] if n >= 2 else seeded
 
     def simulate_once(self) -> dict:
-        """Una simulación completa. Devuelve hasta dónde llegó cada equipo."""
-        firsts, seconds, thirds = [], [], []
-        for teams in self.groups.values():
-            standing = self._simulate_group(teams)
-            firsts.append(standing.iloc[0]["team"])
-            seconds.append(standing.iloc[1]["team"])
-            row = standing.iloc[2]
-            thirds.append((row["team"], row["pts"], row["gd"], row["gf"], self.rng.random()))
-
-        thirds_df = pd.DataFrame(thirds, columns=["team", "pts", "gd", "gf", "rnd"])
-        best_thirds = (thirds_df.sort_values(["pts", "gd", "gf", "rnd"], ascending=False)
-                       .head(8)["team"].tolist())
-
-        qualified = firsts + seconds + best_thirds  # 32
+        """Una simulación completa CONDICIONADA en lo ya jugado: los partidos
+        con resultado real usan ese resultado (grupos y eliminatorias, incl.
+        penales) y solo se sortea lo pendiente. Devuelve hasta dónde llegó
+        cada equipo."""
+        ko_real = self._fixture_state()["ko_winners"]
         reached = {t: "Grupos" for g in self.groups.values() for t in g}
-        for t in qualified:
+
+        skel = self._real_bracket_skeleton()
+        if skel is not None:
+            # Grupos terminados y llave oficial conocida: bracket real.
+            alive = [t for ab in skel for t in ab]
+        else:
+            # Simular grupos (condicionados en lo jugado) y sembrar por Elo.
+            firsts, seconds, thirds = [], [], []
+            for teams in self.groups.values():
+                standing = self._simulate_group(teams)
+                firsts.append(standing.iloc[0]["team"])
+                seconds.append(standing.iloc[1]["team"])
+                row = standing.iloc[2]
+                thirds.append((row["team"], row["pts"], row["gd"], row["gf"], self.rng.random()))
+            thirds_df = pd.DataFrame(thirds, columns=["team", "pts", "gd", "gf", "rnd"])
+            best_thirds = (thirds_df.sort_values(["pts", "gd", "gf", "rnd"], ascending=False)
+                           .head(8)["team"].tolist())
+            alive = self._bracket_order(firsts + seconds + best_thirds)  # 32
+
+        for t in alive:
             reached[t] = "16avos"
 
         round_names = ["16avos", "8vos", "4tos", "Semis", "Final", "Campeón"]
-        alive = self._bracket_order(qualified)
         rnd_i = 0
         while len(alive) > 1:
             nxt = []
             for k in range(0, len(alive), 2):
                 a, b = alive[k], alive[k + 1]
-                winner = self._knockout_winner(a, b)
+                winner = ko_real.get(frozenset((a, b))) or self._knockout_winner(a, b)
                 nxt.append(winner)
                 reached[winner] = round_names[rnd_i + 1]
             alive = nxt
