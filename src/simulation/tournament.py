@@ -20,7 +20,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
-from ..config import load_config, all_teams
+from ..config import load_config, all_teams, RAW_DIR
 from ..models.ensemble import EnsemblePredictor
 
 
@@ -245,6 +245,34 @@ class TournamentSimulator:
             alive = nxt
         return rounds
 
+    def _real_ko_winners(self) -> dict[frozenset, str]:
+        """Ganadores REALES de las eliminatorias ya jugadas: por marcador, y en
+        empates (definidos por penales) según data/raw/wc26_pens.csv
+        (columnas: home_team,away_team,winner — cargar a mano tras cada tanda)."""
+        from ..data.sources import load_fixture
+        fx = load_fixture()
+        if fx.empty:
+            return {}
+        pens: dict[frozenset, str] = {}
+        p = RAW_DIR / "wc26_pens.csv"
+        if p.exists():
+            for r in pd.read_csv(p).itertuples(index=False):
+                pens[frozenset((self._canon(r.home_team), self._canon(r.away_team)))] = \
+                    self._canon(r.winner)
+        out: dict[frozenset, str] = {}
+        ko = fx[(fx["group"] == "—") & fx["played"]]
+        for r in ko.itertuples(index=False):
+            hs, as_ = int(r.home_score), int(r.away_score)
+            if hs > as_:
+                w = r.home
+            elif hs < as_:
+                w = r.away
+            else:
+                w = pens.get(frozenset((r.home, r.away)))
+            if w:
+                out[frozenset((r.home, r.away))] = w
+        return out
+
     def official_bracket(self) -> dict:
         """
         Cuadro eliminatorio OFICIAL del WC2026 (mapa FIFA posición→llave), no
@@ -323,17 +351,48 @@ class TournamentSimulator:
             a, b = resolve(sa, mi), resolve(sb, mi)
             r32.append({"a": a, "b": b, "la": slot_label(sa), "lb": slot_label(sb)})
 
-        # Simular una ronda (favorito avanza) y devolver matches con ganador
+        # Corregir con el fixture REAL de 16avos: la asignación de terceros es
+        # greedy (aproximada); si el cruce real ya se conoce (jugado o
+        # programado), el rival del equipo ancla (1º/2º) se toma del fixture.
+        from ..data.sources import load_fixture
+        fx = load_fixture()
+        ko_fx = fx[fx["group"] == "—"].sort_values("date").head(16) if not fx.empty else None
+        if ko_fx is not None and not ko_fx.empty:
+            real_pairs = {frozenset((r.home, r.away)) for r in ko_fx.itertuples(index=False)}
+            opp: dict[str, str] = {}
+            for pair in real_pairs:
+                x, y = tuple(pair)
+                opp[x], opp[y] = y, x
+            for mi, m in enumerate(r32):
+                a, b = m["a"], m["b"]
+                if frozenset((a, b)) in real_pairs:
+                    continue
+                sa, sb = R32[mi]
+                if sa != "3" and sb == "3" and a in opp:
+                    m["b"] = opp[a]
+                elif sb != "3" and sa == "3" and b in opp:
+                    m["a"] = opp[b]
+
+        real = self._real_ko_winners()
+
+        # Ronda: si el cruce YA SE JUGÓ avanza el ganador real; si no, el
+        # favorito según la fuente elegida (modelo/blend/mercado).
         def play(matches):
             out = []
             for m in matches:
                 a, b = m["a"], m["b"]
                 if a == "—" or b == "—":
                     w, pa, pb = (a if b == "—" else b), 0.5, 0.5
-                else:
-                    p = self._probs(a, b, knockout=True)
-                    pa, pb = p["p_home"], p["p_away"]
-                    w = a if pa >= pb else b
+                    out.append({**m, "winner": w, "pa": pa, "pb": pb})
+                    continue
+                rw = real.get(frozenset((a, b)))
+                if rw is not None:
+                    out.append({**m, "winner": rw, "pa": 1.0 if rw == a else 0.0,
+                                "pb": 1.0 if rw == b else 0.0, "played": True})
+                    continue
+                p = self._probs(a, b, knockout=True)
+                pa, pb = p["p_home"], p["p_away"]
+                w = a if pa >= pb else b
                 out.append({**m, "winner": w, "pa": round(pa, 2), "pb": round(pb, 2)})
             return out
 
@@ -357,6 +416,9 @@ class TournamentSimulator:
         if fin_a == "—" or fin_b == "—":
             champ = fin_a if fin_b == "—" else fin_b
             pa = pb = 0.5
+        elif frozenset((fin_a, fin_b)) in real:
+            champ = real[frozenset((fin_a, fin_b))]
+            pa, pb = (1.0, 0.0) if champ == fin_a else (0.0, 1.0)
         else:
             p = self._probs(fin_a, fin_b, knockout=True)
             pa, pb = p["p_home"], p["p_away"]
