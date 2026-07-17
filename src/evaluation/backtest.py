@@ -305,7 +305,9 @@ def backtest_holdout(matches: pd.DataFrame, months: int = 12,
 # =========================================================================== #
 # TUNING con validación temporal rolling-origin (multi-fold, sin fuga)
 # =========================================================================== #
-FOLD_CUTOFFS = [f"{y}-01-01" for y in range(2019, 2026)]   # 7 cortes anuales
+# 7 cortes anuales + el corte pre-Mundial: entrena hasta el 01/06/2026 y
+# evalúa sobre el WC26 jugado (el fold más parecido al dominio que nos importa)
+FOLD_CUTOFFS = [f"{y}-01-01" for y in range(2019, 2026)] + ["2026-06-01"]
 HORIZON_DAYS = 365
 
 
@@ -340,9 +342,15 @@ def _folds(df: pd.DataFrame):
 
 
 def _poisson_P(model: DixonColesModel, test: pd.DataFrame, knockout: bool = False) -> np.ndarray:
+    """Prob. del Poisson por fila. Si el test trae `is_knockout`, se aplica el
+    factor de eliminatorias por partido (igual que en producción); el flag
+    `knockout` fuerza el factor para todo el set."""
+    ko_col = (test["is_knockout"].fillna(False).astype(bool).tolist()
+              if "is_knockout" in test.columns else [False] * len(test))
     out = []
-    for h, a, neu in test[["home_team", "away_team", "neutral"]].itertuples(index=False, name=None):
-        p = model.probabilities(h, a, neutral=bool(neu), knockout=knockout)
+    for (h, a, neu), ko in zip(
+            test[["home_team", "away_team", "neutral"]].itertuples(index=False, name=None), ko_col):
+        p = model.probabilities(h, a, neutral=bool(neu), knockout=knockout or ko)
         out.append([p["H"], p["D"], p["A"]])
     return np.asarray(out)
 
@@ -398,7 +406,6 @@ def eval_boost(df: pd.DataFrame, boosts=(1.0, 2.0, 3.0, 5.0, 8.0),
     ESA edición sobre-ponderada por `boost`) y evalúa el ensemble elo+poisson
     sobre sus 16 eliminatorias."""
     editions = sorted({d.year for d in df.loc[df["is_knockout"], "date"]})
-    editions = [y for y in editions if y < 2026]
     rows = []
     for boost in boosts:
         Ps, ys = [], []

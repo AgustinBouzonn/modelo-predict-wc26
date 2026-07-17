@@ -36,6 +36,7 @@ class EnsemblePredictor:
     hosts: list[str] = field(default_factory=list)   # anfitriones (juegan en casa)
     host_tilt: float = 0.0                            # ventaja de localía del anfitrión
     temperature: float = 1.0                          # calibración: >1 aplana, <1 afila
+    draw_tilt: float = 0.0                            # calibración del empate: pd *= e^d
 
     # ------------------------------------------------------------------ #
     def _norm_weights(self) -> dict[str, float]:
@@ -80,6 +81,17 @@ class EnsemblePredictor:
         s = sum(scaled.values())
         return {k: v / s for k, v in scaled.items()}
 
+    def _apply_draw_tilt(self, probs: dict[str, float]) -> dict[str, float]:
+        """Calibración del empate (la temperatura no puede corregirlo: afecta
+        las 3 clases por igual). Validado en backtest: el modelo sub-predice
+        empates. d>0 infla P(D): pd *= e^d, renormalizado."""
+        d = float(getattr(self, "draw_tilt", 0.0))
+        if d == 0.0:
+            return probs
+        pd_ = probs["D"] * math.exp(d)
+        s = probs["H"] + pd_ + probs["A"]
+        return {"H": probs["H"] / s, "D": pd_ / s, "A": probs["A"] / s}
+
     # ------------------------------------------------------------------ #
     def predict(self, home: str, away: str, neutral: bool = True,
                 breakdown: bool = False, knockout: bool = False) -> dict:
@@ -100,6 +112,7 @@ class EnsemblePredictor:
 
         combined = self._apply_news(combined, home, away)
         combined = self._apply_host(combined, home, away)
+        combined = self._apply_draw_tilt(combined)
         combined = self._apply_temperature(combined)
 
         eg_home, eg_away = self.poisson.expected_goals(home, away, neutral=neutral,

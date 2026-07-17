@@ -82,7 +82,8 @@ def train_all(fetch: bool = True, fetch_news: bool = True, n_sims: int = 0) -> E
     ens = EnsemblePredictor(elo=elo, poisson=poisson, ml=ml,
                             weights=weights, sentiment=sentiment,
                             hosts=hosts, host_tilt=float(cfg.get("host_advantage_tilt", 0.0)),
-                            temperature=float(cfg.get("ensemble_temperature", 1.0)))
+                            temperature=float(cfg.get("ensemble_temperature", 1.0)),
+                            draw_tilt=float(cfg.get("ensemble_draw_tilt", 0.0)))
     ens.save()
     print("\n✓ Ensemble entrenado y guardado en models/ensemble.joblib")
 
