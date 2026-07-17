@@ -327,6 +327,70 @@ class TournamentSimulator:
                 out[frozenset((r.home, r.away))] = w
         return out
 
+    def _real_tree(self):
+        """Reconstruye el árbol eliminatorio REAL desde el fixture, cuando ya
+        se conocen TODOS los cruces (16avos→final): el mapa aproximado de
+        slots queda obsoleto apenas los cruces reales difieren de él.
+
+        Pela rondas iterativamente: la 1ª aparición de cada equipo en un
+        partido eliminatorio es su cruce de esa ronda (robusto a fechas UTC
+        que se pisan entre rondas). Devuelve (left, right, final_pair) con
+        left/right = [16avos(8), 8vos(4), 4tos(2), semi(1)] como pares (a,b),
+        o None si el árbol aún no es reconstruible completo."""
+        from ..data.sources import load_fixture
+        try:
+            fx = load_fixture()
+        except Exception:  # noqa: BLE001
+            return None
+        if fx.empty:
+            return None
+        ko = fx[fx["group"] == "—"].dropna(subset=["home", "away"]).sort_values("date")
+        pool = [(r.home, r.away) for r in ko.itertuples(index=False)]
+        rounds: list[list[tuple[str, str]]] = []
+        while pool:
+            first: dict[str, int] = {}
+            for i, m in enumerate(pool):
+                for t in m:
+                    first.setdefault(t, i)
+            cur = [i for i, m in enumerate(pool) if first[m[0]] == i and first[m[1]] == i]
+            if not cur:
+                return None
+            rounds.append([pool[i] for i in cur])
+            keep = set(cur)
+            pool = [m for i, m in enumerate(pool) if i not in keep]
+        # 5 rondas: 16avos, 8vos, 4tos, semis y [3er puesto + final]
+        if [len(r) for r in rounds] != [16, 8, 4, 2, 2]:
+            return None
+        r32, r16, qf, sf, last = rounds
+        real = self._real_ko_winners()
+        w1, w2 = real.get(frozenset(sf[0])), real.get(frozenset(sf[1]))
+        fin = None
+        if w1 and w2:      # la final la juegan los ganadores de las semis
+            fin = next((p for p in last if frozenset(p) == frozenset((w1, w2))), None)
+        if fin is None:    # semis sin definir: la final es el último partido
+            fin = last[-1]
+
+        match_of = [{t: p for p in lvl for t in p} for lvl in (r32, r16, qf, sf)]
+
+        def build_side(anchor):
+            side = [[match_of[3].get(anchor)]]
+            if side[0][0] is None:
+                return None
+            for lvl in (2, 1, 0):
+                nxt = []
+                for a, b in side[-1]:
+                    ca, cb = match_of[lvl].get(a), match_of[lvl].get(b)
+                    if ca is None or cb is None:
+                        return None
+                    nxt.extend([ca, cb])
+                side.append(nxt)
+            return side[::-1]
+
+        left, right = build_side(fin[0]), build_side(fin[1])
+        if left is None or right is None:
+            return None
+        return left, right, fin
+
     def official_bracket(self) -> dict:
         """
         Cuadro eliminatorio OFICIAL del WC2026 (mapa FIFA posición→llave), no
@@ -464,9 +528,33 @@ class TournamentSimulator:
                 rounds.append(play(next_round(rounds[-1])))
             return rounds
 
-        left = build_side(r32[:8])
-        right = build_side(r32[8:])
-        fin_a, fin_b = left[-1][0]["winner"], right[-1][0]["winner"]
+        # Si el árbol eliminatorio real completo ya es conocido, manda el
+        # fixture (los cruces reales pueden diferir del mapa de slots).
+        tree = self._real_tree()
+        if tree is not None:
+            lrounds, rrounds, fin_pair = tree
+
+            def team_label(t):
+                for g, arr in pos.items():
+                    if arr and arr[0] == t:
+                        return f"1º {g}"
+                    if len(arr) > 1 and arr[1] == t:
+                        return f"2º {g}"
+                return "Mejor 3º"
+
+            def decorate(rounds_pairs):
+                return [play([{"a": a, "b": b,
+                               "la": team_label(a) if i == 0 else "",
+                               "lb": team_label(b) if i == 0 else ""}
+                              for a, b in lvl])
+                        for i, lvl in enumerate(rounds_pairs)]
+
+            left, right = decorate(lrounds), decorate(rrounds)
+            fin_a, fin_b = fin_pair
+        else:
+            left = build_side(r32[:8])
+            right = build_side(r32[8:])
+            fin_a, fin_b = left[-1][0]["winner"], right[-1][0]["winner"]
         if fin_a == "—" or fin_b == "—":
             champ = fin_a if fin_b == "—" else fin_b
             pa = pb = 0.5
