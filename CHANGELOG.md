@@ -9,6 +9,8 @@ Hitos del proyecto (de lo más nuevo a lo más viejo).
   log-loss 0.838, RPS 0.156, contra 47.1% del baseline "siempre local".
 - **Holdout 12 meses** (452 partidos competitivos): ensemble 62.4% / 0.836 / RPS 0.163,
   cuántico 62.4% / 0.874 / RPS 0.169.
+- Figuras de `docs/` regeneradas con estas métricas. `quantum_eval.py` ahora las guarda en
+  `docs/metricas_holdout.json` y `scripts/make_readme_figure.py` las lee de ahí.
 - Las cifras de las secciones siguientes son de junio y quedan como registro histórico.
 
 ## Módulo cuántico (QML)

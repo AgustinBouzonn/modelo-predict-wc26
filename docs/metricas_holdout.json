@@ -1,0 +1,22 @@
+{
+  "medido": "2026-10-19",
+  "datos_hasta": "2026-10-06",
+  "desde": "2025-10-06",
+  "meses": 12,
+  "partidos": 452,
+  "cuantico": {
+    "acc": 0.6239,
+    "logloss": 0.8738,
+    "rps": 0.169
+  },
+  "ensemble": {
+    "acc": 0.6239,
+    "logloss": 0.836,
+    "rps": 0.1628
+  },
+  "baseline_frecuencias": {
+    "acc": 0.4535,
+    "logloss": 1.0658,
+    "rps": 0.2347
+  }
+}
