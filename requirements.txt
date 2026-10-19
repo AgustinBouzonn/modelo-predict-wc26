@@ -19,7 +19,7 @@ vaderSentiment>=3.3
 
 # Dashboard
 streamlit>=1.36
-plotly>=5.22
+plotly>=6.8.0
 
 # Persistencia de modelos
 joblib>=1.4
