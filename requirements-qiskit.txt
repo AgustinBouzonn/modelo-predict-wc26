@@ -1,0 +1,12 @@
+# Extra opcional: correr el clasificador cuántico sobre Qiskit (quantum_hardware.py).
+# Incluye el simulador local de Qiskit y el acceso a QPUs reales de IBM Quantum.
+# No hace falta para el pipeline, el dashboard ni los tests.
+#
+#   pip install -r requirements-qiskit.txt
+-r requirements.txt
+
+# Dispositivos qiskit.basicsim y qiskit.remote para PennyLane
+pennylane-qiskit>=0.40
+
+# QiskitRuntimeService, con el canal ibm_quantum_platform
+qiskit-ibm-runtime>=0.40

@@ -146,6 +146,14 @@ python quantum_eval.py                               # cuántico vs ensemble
 | `build_quantum_widget.py` | Genera el demo interactivo del predictor cuántico |
 | `scripts/make_readme_figure.py` | Regenera las figuras de `docs/` |
 
+`quantum_hardware.py` necesita las dependencias opcionales de Qiskit, que no se instalan con `requirements.txt`:
+
+```bash
+pip install -r requirements-qiskit.txt
+python quantum_hardware.py              # simulador local de Qiskit, sin token
+python quantum_hardware.py --hardware   # QPU real de IBM Quantum (token en IBM_QUANTUM_TOKEN)
+```
+
 ## 🔄 Datos y actualización
 
 - **Histórico:** se descarga del dataset público de partidos internacionales. Volvé a correr `python -m src.pipeline` para reentrenar con lo último.
