@@ -161,13 +161,13 @@ python quantum_eval.py             # cuántico vs ensemble (out-of-sample)
 python quantum_ensemble.py         # ¿aporta al ensemble? (blend)
 streamlit run app/dashboard.py     # dashboard -> pestaña ⚛️ Cuántico
 
-# Hardware real de IBM Quantum (requiere: pip install pennylane-qiskit)
+# Hardware real de IBM Quantum (requiere: pip install -r requirements-qiskit.txt)
 python quantum_hardware.py            # valida en simulador qiskit
 python quantum_hardware.py --hardware # corre en una QPU real (necesita token)
 ```
 
 Requiere PennyLane: `pip install pennylane`. Para el Paso 9 (hardware):
-`pip install pennylane-qiskit` y un token gratuito de
+`pip install -r requirements-qiskit.txt` (PennyLane-Qiskit y Qiskit IBM Runtime) y un token gratuito de
 [quantum.ibm.com](https://quantum.ibm.com) en `IBM_QUANTUM_TOKEN` o
 `config/ibm_token.txt`.
 
