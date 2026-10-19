@@ -11,9 +11,9 @@ no hace falta hardware cuántico real.
 ## Qué hace
 
 - Predice **1-X-2** (gana local / empate / gana visitante).
-- En el holdout out-of-sample (601 partidos competitivos): **61.2% accuracy**,
-  **RPS 0.175** — a ~2.5 pts del ensemble completo (63.7%, RPS 0.160) y muy por
-  encima del baseline (46.4%, RPS 0.234).
+- En el holdout out-of-sample de 12 meses (452 partidos competitivos, medido el
+  2026-10-19): **62.4% accuracy**, **RPS 0.169**. Empata en accuracy con el
+  ensemble (62.4%, RPS 0.163) y queda muy por encima del baseline (45.4%, RPS 0.235).
 - Se integra al dashboard de Streamlit como pestaña **⚛️ Cuántico**, donde se
   compara la distribución 1-X-2 contra el ensemble y se muestran las mayores
   discrepancias.
@@ -73,8 +73,8 @@ ensemble clásico. Se encapsuló el modelo en la clase reutilizable
 ### Paso 3 — Datos frescos + reentrenamiento completo
 Se scrapearon datos nuevos (**49.477** partidos crudos → **23.298** procesados,
 hasta 2026-06-18) y se reentrenó **todo**: Elo, Poisson, XGBoost, noticias y el
-cuántico. Backtest del ensemble: **63.7%** accuracy en el holdout de 12 meses
-(vs 46.4% del baseline).
+cuántico. Backtest del ensemble en ese momento: **63.7%** accuracy en el holdout
+de 12 meses (vs 46.4% del baseline).
 
 ### Paso 4 — Salto a multiclase 1-X-2 (4 qubits)
 Para que fuera **directamente comparable** al ensemble, se reescribió el modelo:
@@ -130,11 +130,21 @@ circuito en una **QPU real** de IBM Quantum, además del simulador.
   **ruido NISQ** sobre las predicciones. El token se lee de una variable de entorno
   o de `config/ibm_token.txt` (gitignored) — **nunca se versiona**.
 
-## 📊 Resultados (out-of-sample, holdout 12m, 601 partidos competitivos)
+## 📊 Resultados (out-of-sample, holdout 12m)
+
+Medición actual, del 2026-10-19: datos hasta el 2026-10-06 y 452 partidos competitivos entre el 2025-10-06 y el inicio del Mundial. Se reproduce con `python quantum_eval.py`.
 
 | Modelo | Accuracy | Log-loss | RPS |
 |---|---|---|---|
-| 🧮 Ensemble (Elo · Poisson · XGBoost) | 63.7% | 0.837 | 0.160 |
+| 🧮 Ensemble (Elo 0.2 · Poisson 0.8 · XGBoost 0) | 62.4% | 0.836 | 0.163 |
+| ⚛️ Cuántico (4 qubits, re-uploading) | 62.4% | 0.874 | 0.169 |
+| 📏 Baseline (frecuencias 1-X-2) | 45.4% | 1.066 | 0.235 |
+
+Medición de junio, con datos hasta el 2026-06-18 y 601 partidos competitivos:
+
+| Modelo | Accuracy | Log-loss | RPS |
+|---|---|---|---|
+| 🧮 Ensemble (pesos de junio) | 63.7% | 0.837 | 0.160 |
 | ⚛️ Cuántico (4 qubits, re-uploading) | 61.2% | 0.892 | 0.175 |
 | 📏 Baseline (frecuencias 1-X-2) | 46.4% | 1.061 | 0.234 |
 

@@ -1,5 +1,8 @@
 # 📊 Reporte de evaluación y mejoras — WC26 (2026-06-19)
 
+> [!NOTE]
+> Reporte histórico, escrito durante la fase de grupos con otros pesos del ensemble. Las métricas actuales, medidas después del Mundial, están en el [README](README.md#-resultados).
+
 Datos: **23.298 partidos** (2002 → 2026-06-18), 49.477 crudos scrapeados.
 Incluye 8 resultados del Mundial ya cargados. Todas las métricas son
 **out-of-sample** (entrenado as-of, evaluado sobre lo posterior).

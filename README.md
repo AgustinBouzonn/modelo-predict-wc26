@@ -25,15 +25,29 @@ Modelo **ensemble** que predice los partidos del Mundial 2026 (48 selecciones, 1
 
 ## 📊 Resultados
 
-Holdout out-of-sample de 12 meses sobre **601 partidos competitivos**.
+Medido el **2026-10-19** con la configuración actual del ensemble (Elo 0.2 · Poisson 0.8 · XGBoost 0, en `config/teams_wc26.yaml`) y datos hasta el 2026-10-06.
+
+**Mundial 2026 · 104 partidos.** El ensemble se entrena solo con partidos anteriores al 11 de junio de 2026.
 
 | Modelo | Accuracy | Log-loss | RPS |
 |--------|:--------:|:--------:|:---:|
-| 🧮 **Ensemble** (Elo · Poisson · XGBoost) | **64.1%** | **0.834** | **0.160** |
-| ⚛️ Cuántico (4 qubits, 1-X-2) | 61.2% | 0.892 | 0.175 |
-| 📏 Baseline (frecuencias 1-X-2) | 46.4% | 1.061 | 0.234 |
+| 🧮 **Ensemble** (Elo · Poisson) | **68.3%** | **0.838** | **0.156** |
+| 📏 Baseline "siempre local" | 47.1% | 1.126 | 0.249 |
 
-Las métricas se calculan **sin fuga de datos**: el modelo se entrena *as-of* una fecha de corte y se evalúa sobre lo posterior. RPS es el *Ranked Probability Score*, la métrica estándar para 1-X-2 (menor es mejor). Ambos modelos superan con claridad al baseline.
+> [!NOTE]
+> Los pesos y la calibración actuales se ajustaron en julio con un backtest que ya incluía partidos jugados de este Mundial. El modelo no vio esos resultados al entrenar, pero la elección de pesos sí, así que esta cifra no es del todo independiente.
+
+**Holdout de 12 meses · 452 partidos competitivos**, del 2025-10-06 al inicio del Mundial.
+
+| Modelo | Accuracy | Log-loss | RPS |
+|--------|:--------:|:--------:|:---:|
+| 🧮 **Ensemble** (Elo · Poisson) | **62.4%** | **0.836** | **0.163** |
+| ⚛️ Cuántico (4 qubits, 1-X-2) | 62.4% | 0.874 | 0.169 |
+| 📏 Baseline (frecuencias 1-X-2) | 45.4% | 1.066 | 0.235 |
+
+Las métricas se calculan **sin fuga de datos**: cada modelo se entrena *as-of* una fecha de corte y se evalúa sobre lo posterior. El backtest evalúa el modelo base, sin el ajuste por sentimiento de noticias. RPS es el *Ranked Probability Score*, la métrica estándar para 1-X-2 (menor es mejor). Los dos modelos superan con claridad al baseline. El cuántico empata en accuracy, pero el ensemble asigna mejores probabilidades.
+
+Para reproducirlas: `python -m src.pipeline`, después `python -m src.evaluation.backtest` y `python quantum_eval.py`. Las cifras de junio (63.7% y 64.1% sobre 601 partidos) usaban datos hasta el 18 de junio y otros pesos; quedan como registro histórico en [REPORTE_MEJORAS.md](REPORTE_MEJORAS.md).
 
 <p align="center">
   <img src="docs/performance.png" alt="Rendimiento del ensemble frente a los baselines" width="85%"/>
@@ -43,11 +57,11 @@ Las métricas se calculan **sin fuga de datos**: el modelo se entrena *as-of* un
   <img src="docs/quantum.png" alt="Módulo cuántico: frontera de decisión y comparación con el ensemble" width="85%"/>
 </p>
 
-El detalle de la evaluación, incluido el rendimiento sobre los partidos del Mundial, está en [REPORTE_MEJORAS.md](REPORTE_MEJORAS.md).
+Las figuras corresponden a la evaluación de junio. El reporte de esa evaluación, con el análisis de errores y las mejoras probadas, está en [REPORTE_MEJORAS.md](REPORTE_MEJORAS.md).
 
 ## ✨ Características
 
-- 🧮 **Ensemble clásico** Elo + Poisson (Dixon-Coles) + XGBoost, con pesos optimizados por backtest.
+- 🧮 **Ensemble clásico** Elo + Poisson (Dixon-Coles) + XGBoost, con pesos optimizados por backtest. Hoy XGBoost tiene peso 0.
 - 🗞️ **Sentimiento de noticias** (RSS de Google News + VADER) como ajuste del "momentum mediático" de cada selección.
 - ⚛️ **Clasificador cuántico variacional** con PennyLane: 4 qubits y *data re-uploading*, comparado partido a partido contra el ensemble.
 - 🎲 **Simulación Monte Carlo** del torneo completo: fase de grupos y llaves.
