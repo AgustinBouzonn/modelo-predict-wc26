@@ -2,6 +2,15 @@
 
 Hitos del proyecto (de lo más nuevo a lo más viejo).
 
+## Evaluación posterior al Mundial (2026-10-19)
+- Re-evaluación con datos hasta el 2026-10-06 y la configuración actual
+  (Elo 0.2 · Poisson 0.8 · XGBoost 0, re-tuneada el 16 de julio).
+- **Mundial 2026** (104 partidos, entrenado antes del 11 de junio): 68.3% accuracy,
+  log-loss 0.838, RPS 0.156, contra 47.1% del baseline "siempre local".
+- **Holdout 12 meses** (452 partidos competitivos): ensemble 62.4% / 0.836 / RPS 0.163,
+  cuántico 62.4% / 0.874 / RPS 0.169.
+- Las cifras de las secciones siguientes son de junio y quedan como registro histórico.
+
 ## Módulo cuántico (QML)
 - Clasificador cuántico variacional **multiclase 1-X-2** (4 qubits, *data
   re-uploading*, PennyLane) → 61.2% accuracy, RPS 0.175 (holdout out-of-sample).
