@@ -158,7 +158,7 @@ python quantum_eval.py                               # cuántico vs ensemble
 | `calibration_experiment.py` | Prueba *temperature scaling* sobre las probabilidades del ensemble |
 | `quantum_hardware.py` | Corre el clasificador en Qiskit, en simulador o en una QPU real de IBM Quantum |
 | `build_quantum_widget.py` | Genera el demo interactivo del predictor cuántico |
-| `scripts/make_readme_figure.py` | Regenera las figuras de `docs/` a partir de `docs/metricas_holdout.json`; corré antes `quantum_eval.py` |
+| `scripts/make_readme_figure.py` | Regenera las figuras de `docs/` a partir de `docs/metricas_holdout.json`; corré antes `quantum_eval.py`. Necesita matplotlib, que viene en `requirements-dev.txt` |
 
 `quantum_hardware.py` necesita las dependencias opcionales de Qiskit, que no se instalan con `requirements.txt`:
 
