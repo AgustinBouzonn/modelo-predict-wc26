@@ -3,3 +3,6 @@
 pytest>=8.0
 pytest-cov>=5.0
 ruff>=0.6
+
+# Figuras de docs/ (scripts/make_readme_figure.py)
+matplotlib>=3.9
