@@ -3,11 +3,16 @@
   - docs/ranking.png      ranking Elo de las selecciones del Mundial
   - docs/performance.png  rendimiento del ensemble vs baselines (out-of-sample)
 
-Lee data/processed/quantum_demo.json (no necesita PennyLane). Uso:
+Lee data/processed/quantum_demo.json (lo genera quantum_match.py) y
+docs/metricas_holdout.json (lo genera quantum_eval.py). No necesita PennyLane.
+Uso:
+    python quantum_eval.py              # actualiza docs/metricas_holdout.json
     python scripts/make_readme_figure.py
 """
 import json
+import math
 import os
+import sys
 
 import matplotlib
 matplotlib.use("Agg")
@@ -21,6 +26,16 @@ os.makedirs(DOCS, exist_ok=True)
 with open(os.path.join(ROOT, "data/processed/quantum_demo.json"), encoding="utf-8") as f:
     D = json.load(f)
 
+_METRICS = os.path.join(DOCS, "metricas_holdout.json")
+if not os.path.exists(_METRICS):
+    sys.exit("Falta docs/metricas_holdout.json: corré primero `python quantum_eval.py`.")
+with open(_METRICS, encoding="utf-8") as f:
+    M = json.load(f)
+
+
+def _fmt_int(n):
+    return f"{n:,}".replace(",", ".")
+
 BG = "#0e1117"
 plt.rcParams.update({
     "figure.facecolor": BG, "axes.facecolor": BG, "savefig.facecolor": BG,
@@ -32,8 +47,9 @@ plt.rcParams.update({
 
 def fig_quantum():
     models = ["Baseline", "Cuántico (4q)", "Ensemble"]
-    acc = [46.4, 61.2, 64.1]
-    rps = [0.234, 0.175, 0.160]
+    rows = [M["baseline_frecuencias"], M["cuantico"], M["ensemble"]]
+    acc = [r["acc"] * 100 for r in rows]
+    rps = [r["rps"] for r in rows]
     colors = ["#64748b", "#a855f7", "#16a34a"]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.6),
@@ -69,8 +85,9 @@ def fig_quantum():
     for s in ["top", "right"]:
         ax2.spines[s].set_visible(False)
 
-    fig.text(0.5, 0.01, "4 qubits · data re-uploading · entrenado sobre 23.298 partidos "
-             "(PennyLane) · RPS menor = mejor", ha="center", color="#64748b", fontsize=9)
+    fig.text(0.5, 0.01, f"4 qubits · data re-uploading · entrenado sobre {_fmt_int(D['n_matches'])} "
+             f"partidos (PennyLane) · holdout de {M['partidos']} partidos · RPS menor = mejor",
+             ha="center", color="#64748b", fontsize=9)
     fig.tight_layout(rect=[0, 0.03, 1, 0.94])
     fig.savefig(os.path.join(DOCS, "quantum.png"), dpi=130)
     plt.close(fig)
@@ -99,14 +116,15 @@ def fig_ranking():
 
 
 def fig_performance():
-    # Métricas del backtest out-of-sample (holdout 12m, 601 partidos competitivos)
+    # Métricas del holdout out-of-sample que guarda quantum_eval.py
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.3))
     fig.suptitle("Rendimiento del ensemble · holdout out-of-sample",
                  fontsize=14, fontweight="bold", color="#f1f5f9", y=0.99)
 
-    labels = ["Azar", "Siempre\nlocal", "Ensemble"]
-    acc = [33.3, 46.4, 64.1]
-    ll = [1.099, 1.061, 0.834]
+    labels = ["Azar", "Frecuencias\n1-X-2", "Ensemble"]
+    base, ens = M["baseline_frecuencias"], M["ensemble"]
+    acc = [100 / 3, base["acc"] * 100, ens["acc"] * 100]
+    ll = [math.log(3), base["logloss"], ens["logloss"]]
     cols_a = ["#64748b", "#64748b", "#16a34a"]
 
     ax1.bar(labels, acc, color=cols_a, width=0.6)
@@ -124,7 +142,8 @@ def fig_performance():
     for ax in (ax1, ax2):
         for s in ["top", "right"]:
             ax.spines[s].set_visible(False)
-    fig.text(0.5, 0.005, "601 partidos competitivos · sin fuga de datos (entrenado as-of)",
+    fig.text(0.5, 0.005, f"{M['partidos']} partidos competitivos desde el {M['desde']} · "
+             f"sin fuga de datos (entrenado as-of) · medido el {M['medido']}",
              ha="center", color="#64748b", fontsize=9)
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     fig.savefig(os.path.join(DOCS, "performance.png"), dpi=130)

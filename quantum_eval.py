@@ -10,6 +10,8 @@ Uso:  python quantum_eval.py [--months 12]
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -17,6 +19,8 @@ import pandas as pd
 from src.evaluation.backtest import _CLASSES, _load, _metrics, train_ensemble_asof
 from src.features.build_features import build_training_table
 from src.models.quantum import FEATURES, QuantumMatchClassifier
+
+METRICS_PATH = Path(__file__).resolve().parent / "docs" / "metricas_holdout.json"
 
 
 def _result_idx(hs, as_):
@@ -64,6 +68,23 @@ def main(months=12):
     print(f"{'⚛️ Cuántico (4 qubits)':<26}{qm['acc']:>9.1%}{qm['logloss']:>10.4f}{qm['rps']:>8.4f}")
     print(f"{'🧮 Ensemble':<26}{em['acc']:>9.1%}{em['logloss']:>10.4f}{em['rps']:>8.4f}")
     print(f"{'📏 Baseline (frec.)':<26}{bm['acc']:>9.1%}{bm['logloss']:>10.4f}{bm['rps']:>8.4f}")
+
+    # Lo usa scripts/make_readme_figure.py para que las figuras no queden desfasadas.
+    def _row(m):
+        return {k: round(float(m[k]), 4) for k in ("acc", "logloss", "rps")}
+
+    payload = {
+        "medido": pd.Timestamp.now().strftime("%Y-%m-%d"),
+        "datos_hasta": str(matches["date"].max().date()),
+        "desde": str(cutoff.date()),
+        "meses": months,
+        "partidos": int(n),
+        "cuantico": _row(qm),
+        "ensemble": _row(em),
+        "baseline_frecuencias": _row(bm),
+    }
+    METRICS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"\nMétricas guardadas en {METRICS_PATH.relative_to(METRICS_PATH.parent.parent)}")
 
 
 if __name__ == "__main__":
